@@ -71,6 +71,42 @@ export default {
       if (userError) throw userError;
       if (!appUser || !appUser.activo) return json({ error: 'Sesión no válida.' }, 401);
 
+      if (method === 'GET' && pathname === '/api/auth/sesion') {
+        return json({
+          autenticado:true,
+          id:appUser.id,
+          nombre:appUser.nombre,
+          usuario:appUser.usuario,
+          es_admin:Boolean(appUser.es_admin),
+          permisos:appUser.permisos || '[]'
+        });
+      }
+
+      if (method === 'GET' && pathname === '/api/resumen') {
+        const tables=['clientes','proveedores','productos','ventas'];
+        const counts:any = {};
+        for (const table of tables) {
+          const {count,error}=await ctx.supabaseAdmin.from(table).select('*',{count:'exact',head:true});
+          if(error) throw error;
+          counts[table]=count||0;
+        }
+        const {data:clientes}=await ctx.supabaseAdmin.from('clientes').select('id,documento');
+        const {data:productos}=await ctx.supabaseAdmin.from('productos').select('id,stock_minimo');
+        const {data:movs}=await ctx.supabaseAdmin.from('movimientos').select('producto_id,tipo,cantidad');
+        const stock:any={};
+        for(const m of (movs||[])){
+          const k=String(m.producto_id);
+          const delta=['Inventario Inicial','Compra','Devolución por venta','Ajuste administrativo - Entrada'].includes(m.tipo)
+            ? Number(m.cantidad||0)
+            : ['Venta','Descarga por daño/motivo','Devolución por compra','Ajuste administrativo - Salida'].includes(m.tipo)
+              ? -Number(m.cantidad||0):0;
+          stock[k]=(stock[k]||0)+delta;
+        }
+        const stock_bajo=(productos||[]).filter((p:any)=>(stock[String(p.id)]||0)<=Number(p.stock_minimo||0)).length;
+        const clientes_pendientes=(clientes||[]).filter((c:any)=>!c.documento || c.documento==='PENDIENTE').length;
+        return json({conteo:counts,notificaciones:{clientes_pendientes,stock_bajo}});
+      }
+
       if (method === 'GET' && pathname === '/api/existencias') {
         if (!tienePermiso(appUser,'existencias') && !tienePermiso(appUser,'kardex') && !tienePermiso(appUser,'productos')) {
           return json({error:'No es posible realizar esta operación.'},403);
