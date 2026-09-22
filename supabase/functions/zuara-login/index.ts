@@ -16,8 +16,10 @@ function json(data: unknown, status = 200) {
 }
 
 function syntheticEmail(usuario: string) {
-  const encoded = btoa(unescape(encodeURIComponent(usuario)))
-    .replace(/=+$/,'').replace(/\+/g,'-').replace(/\//g,'_');
+  const bytes = new TextEncoder().encode(usuario);
+  let binary = '';
+  for (const b of bytes) binary += String.fromCharCode(b);
+  const encoded = btoa(binary).replace(/=+$/,'').replace(/\+/g,'-').replace(/\//g,'_');
   return `${encoded}@auth.zuara.app`.toLowerCase();
 }
 
