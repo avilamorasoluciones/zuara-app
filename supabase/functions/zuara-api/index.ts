@@ -150,6 +150,14 @@ export default {
           cobertura_activa:cobertura,registrada_hoy:Boolean(tasa),fecha_consultada:fecha,es_admin:Boolean(appUser.es_admin)},productos});
       }
 
+      if (method === 'GET' && pathname === '/api/productos') {
+        if (!tienePermiso(appUser,'productos')) return json({error:'No es posible realizar esta operación.'},403);
+        const {data,error}=await ctx.supabaseAdmin.from('productos')
+          .select('*,categorias(nombre),proveedores(nombre)').order('id',{ascending:false});
+        if(error) throw error;
+        return json((data||[]).map((p:any)=>({...p,categoria_nombre:p.categorias?.nombre||null,proveedor_nombre:p.proveedores?.nombre||null})));
+      }
+
       if (method === 'GET' && (pathname === '/api/stock_almacenes' || pathname.startsWith('/api/stock_almacenes/'))) {
         if (!tienePermiso(appUser,'productos') && !tienePermiso(appUser,'existencias') && !tienePermiso(appUser,'kardex')) {
           return json({error:'No es posible realizar esta operación.'},403);
