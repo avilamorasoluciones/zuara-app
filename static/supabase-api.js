@@ -172,7 +172,7 @@
       return responseJSON(Object.fromEntries((data || []).map(x => [x.clave, x.valor])));
     }
 
-    if (pathname === '/api/existencias' || pathname === '/api/lista_precios_data') {
+    if (pathname === '/api/existencias' || pathname === '/api/lista_precios_data' || pathname.startsWith('/api/stock_almacenes/')) {
       return invokeApi(pathname, 'GET', null, Object.fromEntries(u.searchParams.entries()));
     }
 
