@@ -1,0 +1,7 @@
+project_id = "REEMPLAZAR_CON_PROJECT_REF_DE_ZUARA"
+
+[functions.zuara-login]
+verify_jwt = true
+
+[functions.zuara-api]
+verify_jwt = true
