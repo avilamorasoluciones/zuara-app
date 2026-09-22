@@ -71,6 +71,52 @@ export default {
       if (userError) throw userError;
       if (!appUser || !appUser.activo) return json({ error: 'Sesión no válida.' }, 401);
 
+      if (method === 'GET' && pathname === '/api/existencias') {
+        if (!tienePermiso(appUser,'existencias') && !tienePermiso(appUser,'kardex') && !tienePermiso(appUser,'productos')) {
+          return json({error:'No es posible realizar esta operación.'},403);
+        }
+        const { data, error } = await ctx.supabase.rpc('zuara_existencias');
+        if (error) return json({error:error.message},400);
+        return json(data || []);
+      }
+
+      if (method === 'GET' && pathname === '/api/lista_precios_data') {
+        if (!tienePermiso(appUser,'ventas') && !tienePermiso(appUser,'lista_precios')) {
+          return json({error:'No es posible realizar esta operación.'},403);
+        }
+        const url = new URL(req.url);
+        const requestedDate = url.searchParams.get('fecha') || '';
+        const hoy = new Intl.DateTimeFormat('en-CA',{timeZone:'America/Caracas',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+        const fecha = appUser.es_admin && requestedDate ? requestedDate : hoy;
+        const {data:cob,error:ce} = await ctx.supabaseAdmin.from('historico_coberturas')
+          .select('porcentaje_cobertura,factor_proteccion').eq('estado','ACTIVO').order('id',{ascending:false}).limit(1).maybeSingle();
+        if (ce) throw ce;
+        const {data:tasa,error:te} = await ctx.supabaseAdmin.from('historico_tasas')
+          .select('fecha,hora,binance,euro_bcv').eq('fecha',fecha).order('hora',{ascending:false}).limit(1).maybeSingle();
+        if (te) throw te;
+        const {data:prods,error:pe} = await ctx.supabaseAdmin.from('productos')
+          .select('id,codigo_barras,descripcion,unidad_medida,precio_usd,categoria_id,categorias(nombre)').eq('estado','ACTIVO');
+        if (pe) throw pe;
+        const factor=Number(cob?.factor_proteccion||1);
+        const cobertura=Number(cob?.porcentaje_cobertura||0);
+        const bin=Number(tasa?.binance||0), eur=Number(tasa?.euro_bcv||0);
+        const brecha=eur>0?bin/eur-1:0;
+        const estado=!tasa?'FALTAN_TASAS':brecha>cobertura?'MERCADO_VOLATIL':brecha>0?'PRECIO_SEGURO_PRECAUCION':'PRECIO_SEGURO_EXCELENTE';
+        const etiqueta=!tasa?'REGISTRE TASA DEL DÍA':brecha>cobertura?'MERCADO VOLÁTIL / AJUSTAR PRECIO':'PRECIO SEGURO';
+        const productos=(prods||[]).map((p:any)=>{
+          const usd=Number(p.precio_usd||0);
+          let eurCom=usd*factor;
+          eurCom=Math.round((eurCom+Number.EPSILON)*100)/100;
+          const entero=Math.round(eurCom);
+          if (eurCom<entero && entero-eurCom<=0.01) eurCom=entero;
+          return {id:p.id,codigo:p.codigo_barras,categoria:p.categorias?.nombre||'N/A',descripcion:p.descripcion,
+            unidad_medida:p.unidad_medida,precio_usd:usd,precio_eur:eurCom,
+            precio_bs:Math.round(eurCom*eur*100)/100,estado_semaforo:estado,etiqueta_semaforo:etiqueta};
+        });
+        return json({tasas:{fecha:tasa?.fecha||fecha,hora:tasa?.hora||'--:--',binance:bin,euro_bcv:eur,brecha,
+          cobertura_activa:cobertura,registrada_hoy:Boolean(tasa),fecha_consultada:fecha,es_admin:Boolean(appUser.es_admin)},productos});
+      }
+
       // Operaciones críticas: una sola transacción PostgreSQL.
       const mutationMap: Record<string,string> = {
         'POST /api/movimientos':'registrar_movimiento',
