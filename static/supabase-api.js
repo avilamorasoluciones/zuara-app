@@ -358,7 +358,32 @@
         const wb = XLSX.read(ab,{type:'array',cellDates:true});
         const ws=wb.Sheets[wb.SheetNames[0]];
         const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:null});
-        body = { rows };
+        const normalized = [];
+        const toDate = (v) => {
+          if (v instanceof Date) return v;
+          if (typeof v === 'number' && XLSX.SSF?.parse_date_code) {
+            const d = XLSX.SSF.parse_date_code(v);
+            if (d) return new Date(Date.UTC(d.y,d.m-1,d.d,d.H||0,d.M||0,d.S||0));
+          }
+          const d = new Date(v);
+          return Number.isNaN(d.getTime()) ? null : d;
+        };
+        for (const row of rows.slice(7)) {
+          if (row[1] == null || row[1] === '') continue;
+          const fechaObj = toDate(row[1]);
+          if (!fechaObj) continue;
+          const fecha = fechaObj.toISOString().slice(0,10);
+          const horaObj = toDate(row[9]);
+          const hora = horaObj ? horaObj.toISOString().slice(11,19) : String(row[9] || '').slice(0,8);
+          normalized.push({
+            fecha, hora,
+            dolar_bcv:Number(row[2] || 0), binance:Number(row[3] || 0),
+            bybit:Number(row[4] || 0), dolar_promedio:Number(row[5] || 0),
+            euro_bcv:Number(row[6] || 0), zelle:Number(row[7] || 0),
+            paypal:Number(row[8] || 0)
+          });
+        }
+        body = { rows: normalized };
       } else body = {};
     } else if (typeof body === 'string') {
       try { body = JSON.parse(body); } catch (_) {}
