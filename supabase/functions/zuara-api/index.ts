@@ -117,9 +117,6 @@ export default {
       }
 
       if (method === 'GET' && pathname === '/api/lista_precios_data') {
-        if (!tienePermiso(appUser,'ventas') && !tienePermiso(appUser,'lista_precios')) {
-          return json({error:'No es posible realizar esta operación.'},403);
-        }
         const url = new URL(req.url);
         const requestedDate = url.searchParams.get('fecha') || '';
         const hoy = new Intl.DateTimeFormat('en-CA',{timeZone:'America/Caracas',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
@@ -151,6 +148,24 @@ export default {
         });
         return json({tasas:{fecha:tasa?.fecha||fecha,hora:tasa?.hora||'--:--',binance:bin,euro_bcv:eur,brecha,
           cobertura_activa:cobertura,registrada_hoy:Boolean(tasa),fecha_consultada:fecha,es_admin:Boolean(appUser.es_admin)},productos});
+      }
+
+      if (method === 'GET' && (pathname === '/api/stock_almacenes' || pathname.startsWith('/api/stock_almacenes/'))) {
+        if (!tienePermiso(appUser,'productos') && !tienePermiso(appUser,'existencias') && !tienePermiso(appUser,'kardex')) {
+          return json({error:'No es posible realizar esta operación.'},403);
+        }
+        const id=Number(pathname.split('/').pop());
+        const {data:movs,error:me}=await ctx.supabaseAdmin.from('movimientos').select('*').eq('producto_id',id);
+        if(me) throw me;
+        const {data:alm,error:ae}=await ctx.supabaseAdmin.from('almacenes').select('id,nombre');
+        if(ae) throw ae;
+        const result=(alm||[]).map((a:any)=>({
+          ...a,
+          stock:(movs||[]).reduce((s:any,m:any)=>s+
+            (Number(m.almacen_destino_id)===Number(a.id)?Number(m.cantidad||0):
+             Number(m.almacen_origen_id)===Number(a.id)?-Number(m.cantidad||0):0),0)
+        }));
+        return json(result);
       }
 
       // Operaciones críticas: una sola transacción PostgreSQL.
