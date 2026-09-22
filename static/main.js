@@ -104,10 +104,7 @@ function inicializarUI() {
 }
 
 function crearHTMLModal(id, titulo, campos) {
-    // Tasas usa validación explícita en guardarFormulario para que el navegador
-    // no bloquee silenciosamente el submit antes de ejecutar nuestro código.
-    const sinValidacionNativa = id === 'tasas' ? ' novalidate' : '';
-    return `<div class="modal fade" id="modal-${id}" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content ios-modal border-0 shadow-lg"><div class="modal-header border-0 pb-0 pt-4 px-4 d-flex justify-content-between align-items-center"><h5 class="modal-title fw-bolder" id="titulo-modal-${id}">${titulo}</h5><button type="button" class="btn-close rounded-circle bg-light p-2 m-0" data-bs-dismiss="modal"></button></div><div class="modal-body p-4 pt-3"><form${sinValidacionNativa} onsubmit="guardarFormulario(event, '${id}')"><input type="hidden" id="id-${id}">${campos}<button type="submit" class="btn btn-theme w-100 rounded-pill fw-bold py-2 shadow-sm bounce-hover fs-6">Guardar</button></form></div></div></div></div>`;
+    return `<div class="modal fade" id="modal-${id}" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content ios-modal border-0 shadow-lg"><div class="modal-header border-0 pb-0 pt-4 px-4 d-flex justify-content-between align-items-center"><h5 class="modal-title fw-bolder" id="titulo-modal-${id}">${titulo}</h5><button type="button" class="btn-close rounded-circle bg-light p-2 m-0" data-bs-dismiss="modal"></button></div><div class="modal-body p-4 pt-3"><form onsubmit="guardarFormulario(event, '${id}')"><input type="hidden" id="id-${id}">${campos}<button type="submit" class="btn btn-theme w-100 rounded-pill fw-bold py-2 shadow-sm bounce-hover fs-6">Guardar</button></form></div></div></div></div>`;
 }
 
 function calcBrechaForm() {
@@ -754,13 +751,7 @@ function abrirModal(m) {
         document.getElementById('t_hora').value = n.toTimeString().substring(0,5);
     }
     document.getElementById(`titulo-modal-${m}`).innerText = 'Nuevo Registro';
-    const modalElement = document.getElementById(`modal-${m}`);
-    if (!modalElement) {
-        console.error(`No se encontró el modal modal-${m}.`);
-        alert('No se pudo abrir el formulario. Recarga la página e inténtalo nuevamente.');
-        return;
-    }
-    bootstrap.Modal.getOrCreateInstance(modalElement).show();
+    new bootstrap.Modal(document.getElementById(`modal-${m}`)).show();
 }
 
 function generarNEN() {
@@ -1144,30 +1135,11 @@ function llenarModalEditar(m, encodedStr) {
 
 async function guardarFormulario(e, m) {
     e.preventDefault();
-
-    const id = document.getElementById(`id-${m}`)?.value || '';
-    const permiso = m === 'tasas'
-        ? (id ? 'parametros' : 'agregar_tasa')
-        : (m === 'coberturas' ? 'parametros' : m);
-
+    const id = document.getElementById(`id-${m}`).value;
+    const permiso = m === 'tasas' ? (id ? 'parametros' : 'agregar_tasa') : (m === 'coberturas' ? 'parametros' : m);
     if (!exigirPermiso(permiso)) return;
-
-    // Para tasas hacemos la validación aquí, evitando que HTML5 pueda
-    // detener el submit sin dejar ninguna petición visible en Network.
-    if (m === 'tasas') {
-        const fecha = document.getElementById('t_fecha')?.value || '';
-        const binance = document.getElementById('t_bin')?.value || '';
-        const euro = document.getElementById('t_ebcv')?.value || '';
-        const hora = document.getElementById('t_hora')?.value || '';
-
-        if (!fecha || !binance || !euro || !hora) {
-            alert('Completa los campos obligatorios: Fecha, Binance P2P, Euro BCV y Hora.');
-            return;
-        }
-    }
-
     let payload = {};
-
+         
     if(m === 'clientes') payload = { documento: document.getElementById('c_doc').value, nombre: document.getElementById('c_nom').value, telefono: document.getElementById('c_cod').value + document.getElementById('c_tel').value, correo: document.getElementById('c_cor').value, pais: document.getElementById('c_pais').value, estado: document.getElementById('c_est').value, municipio: document.getElementById('c_mun').value, direccion_entrega: document.getElementById('c_dir_ent').value, punto_referencia: document.getElementById('c_ref').value, coordenadas: document.getElementById('c_coo').value, tipo_envio: document.getElementById('c_tipo_env').value };
     else if(m === 'proveedores') payload = { nombre: document.getElementById('p_nom').value, tipo: document.getElementById('p_tipo').value, telefono: document.getElementById('p_tel').value, correo: document.getElementById('p_cor').value, direccion: document.getElementById('p_dir').value };
     else if(m === 'almacenes') payload = { nombre: document.getElementById('a_nom').value, ubicacion: document.getElementById('a_ubi').value };
@@ -1175,18 +1147,8 @@ async function guardarFormulario(e, m) {
     else if(m === 'productos') payload = { codigo_barras: document.getElementById('prod_bar').value, descripcion: document.getElementById('prod_des').value, categoria_id: document.getElementById('prod_cat').value, proveedor_id: document.getElementById('prod_prov').value, unidad_medida: document.getElementById('prod_uni').value, precio_usd: document.getElementById('prod_precio_usd').value, stock_minimo: document.getElementById('prod_min').value, estado: document.getElementById('prod_est').value, foto: document.getElementById('prod_foto').value };
     else if(m === 'tasas') {
         let horaFormat = document.getElementById('t_hora').value;
-        if(horaFormat.length === 5) horaFormat += ':00';
-        payload = {
-            fecha: document.getElementById('t_fecha').value,
-            hora: horaFormat,
-            dolar_bcv: document.getElementById('t_dbcv').value,
-            binance: document.getElementById('t_bin').value,
-            bybit: document.getElementById('t_byb').value,
-            dolar_promedio: document.getElementById('t_dpro').value,
-            euro_bcv: document.getElementById('t_ebcv').value,
-            zelle: document.getElementById('t_zel').value,
-            paypal: document.getElementById('t_pay').value
-        };
+        if(horaFormat.length === 5) horaFormat += ":00";
+        payload = { fecha: document.getElementById('t_fecha').value, hora: horaFormat, dolar_bcv: document.getElementById('t_dbcv').value, binance: document.getElementById('t_bin').value, bybit: document.getElementById('t_byb').value, dolar_promedio: document.getElementById('t_dpro').value, euro_bcv: document.getElementById('t_ebcv').value, zelle: document.getElementById('t_zel').value, paypal: document.getElementById('t_pay').value };
     }
     else if(m === 'coberturas') {
         payload = {
@@ -1197,49 +1159,20 @@ async function guardarFormulario(e, m) {
             estado: document.getElementById('cob_estado').value
         };
     }
+         
+    let res = await fetch(id ? `/api/${m}/${id}` : `/api/${m}`, { method: id ? 'PUT' : 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
+    if(!res.ok) { alert("Hubo un error al guardar. Revisa que llenaste todos los campos."); return; }
+    bootstrap.Modal.getInstance(document.getElementById(`modal-${m}`)).hide();
+    await cargarDataTotal();
 
-    const boton = e.submitter || document.querySelector(`#modal-${m} form button[type="submit"]`);
-    if (boton) {
-        boton.disabled = true;
-        boton.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i>Guardando...';
-    }
-
-    try {
-        const res = await fetch(id ? `/api/${m}/${id}` : `/api/${m}`, {
-            method: id ? 'PUT' : 'POST',
-            headers: {'Content-Type': 'application/json'},
-            credentials: 'same-origin',
-            body: JSON.stringify(payload)
-        });
-
-        const resultado = await res.json().catch(() => ({}));
-
-        if (!res.ok) {
-            if (res.status === 401 || res.status === 403) {
-                alert(resultado.error || 'No es posible realizar esta operación.');
-            } else {
-                throw new Error(resultado.error || 'Hubo un error al guardar el registro.');
-            }
-            return;
-        }
-
-        bootstrap.Modal.getInstance(document.getElementById(`modal-${m}`))?.hide();
-        await cargarDataTotal();
-
-        if (m === 'tasas' && volverANotaTrasRegistrarTasa) {
-            volverANotaTrasRegistrarTasa = false;
-            await prepararVenta();
-        }
-    } catch (error) {
-        console.error('Error al guardar el registro:', error);
-        alert(error.message || 'No se pudo completar el registro.');
-    } finally {
-        if (boton) {
-            boton.disabled = false;
-            boton.innerHTML = 'Guardar';
-        }
+    // Si la tasa se registró desde el flujo de Nota de Entrega, volvemos
+    // automáticamente a la venta para que el usuario pueda continuar.
+    if (m === 'tasas' && volverANotaTrasRegistrarTasa) {
+        volverANotaTrasRegistrarTasa = false;
+        await prepararVenta();
     }
 }
+
 function eliminarRegistro(m, id) {
     const permiso = ['tasas', 'coberturas'].includes(m) ? 'parametros' : (m === 'ventas' ? 'historial_ventas' : m);
     if (!exigirPermiso(permiso)) return;
