@@ -317,7 +317,22 @@
       let select='*';
       if(tabla==='productos') select='*,categorias(nombre),proveedores(nombre)';
       if(tabla==='usuarios') select='id,nombre,usuario,activo,es_admin,permisos,protegido,fecha_registro,auth_user_id';
-      let data=await fetchAllRows(tabla,select);
+      let data;
+      if (tabla === 'historico_tasas') {
+        data = [];
+        const pageSize = 1000;
+        for (let from=0;;from+=pageSize) {
+          const {data:page,error}=await supabaseClient.from(tabla).select(select)
+            .order('fecha',{ascending:false}).order('hora',{ascending:false}).order('id',{ascending:false})
+            .range(from,from+pageSize-1);
+          if(error) throw error;
+          if(!page || !page.length) break;
+          data.push(...page);
+          if(page.length<pageSize) break;
+        }
+      } else {
+        data=await fetchAllRows(tabla,select);
+      }
       if(tabla==='productos') data=data.map(p=>({...p,categoria_nombre:p.categorias?.nombre || null,proveedor_nombre:p.proveedores?.nombre || null}));
       return responseJSON(data);
     }
