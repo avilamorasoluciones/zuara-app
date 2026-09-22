@@ -563,14 +563,14 @@ begin
 
       insert into movimientos(consecutivo,fecha_registro,tipo,producto_id,cantidad,costo_unitario,almacen_destino_id,documento,registrado_por,motivo)
       values(
-        'MOV-'||lpad(mov_num::text,5,'0'),ahora,'Devolución por venta',producto_id,cantidad,tasa_eur,
+        'MOV-'||lpad(mov_num::text,5,'0'),ahora,'Devolución por venta',v_producto_id,cantidad,tasa_eur,
         9999,consec,u.nombre,
         'Afecta a Nota: '||coalesce(p_payload->>'consecutivo_origen','')||' | Motivo: '||coalesce(p_payload->>'motivo','')
       );
       mov_num := mov_num+1;
 
       insert into detalle_nota_credito(consecutivo_nc,producto_id,cantidad,precio_eur,precio_bs,subtotal_eur,subtotal_bs)
-      values(consec,producto_id,cantidad,tasa_eur,tasa_bin,cantidad*tasa_eur,cantidad*tasa_bin);
+      values(consec,v_producto_id,cantidad,tasa_eur,tasa_bin,cantidad*tasa_eur,cantidad*tasa_bin);
     end loop;
 
     update ventas set estado='DEVUELTO PARCIAL/TOTAL'
