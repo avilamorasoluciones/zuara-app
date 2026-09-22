@@ -1,6 +1,7 @@
 import { withSupabase } from 'npm:@supabase/server@^1';
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { scryptSync, randomBytes } from 'node:crypto';
+import { Buffer } from 'node:buffer';
 
 function json(data: unknown, status = 200) {
   return Response.json(data, {
