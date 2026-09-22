@@ -168,6 +168,10 @@
       return responseJSON(Object.fromEntries((data || []).map(x => [x.clave, x.valor])));
     }
 
+    if (pathname === '/api/existencias' || pathname === '/api/lista_precios_data') {
+      return invokeApi(pathname, 'GET', null, Object.fromEntries(u.searchParams.entries()));
+    }
+
     if (pathname === '/api/existencias') {
       const [productos, movimientos] = await Promise.all([
         fetchAllRows('productos','*'),
