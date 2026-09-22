@@ -366,9 +366,11 @@ begin
     perform pg_advisory_xact_lock(zuara_lock_key());
 
     -- Validar stock acumulando las cantidades del carrito por producto.
-    for item in select * from jsonb_array_elements(p_payload->'detalles') loop
-      v_producto_id := (item->>'producto_id')::bigint;
-      cantidad := coalesce((item->>'cantidad')::numeric,0);
+    for v_producto_id, cantidad in
+      select (x->>'producto_id')::bigint, sum(coalesce((x->>'cantidad')::numeric,0))
+      from jsonb_array_elements(p_payload->'detalles') x
+      group by (x->>'producto_id')
+    loop
       if v_producto_id is null or cantidad<=0 then
         return jsonb_build_object('error','Cada detalle de venta debe tener un producto y una cantidad mayor a cero.','status_code',400);
       end if;
@@ -382,7 +384,8 @@ begin
           - coalesce(sum(case when almacen_origen_id in (9998,9999) then cantidad else 0 end),0)
         )
       into saldo_eur
-      from movimientos where movimientos.producto_id=v_producto_id;
+      from movimientos
+      where movimientos.producto_id=v_producto_id;
 
       if cantidad > coalesce(saldo_eur,0) then
         return jsonb_build_object('error','No hay existencias suficientes para completar la venta.','status_code',400);
