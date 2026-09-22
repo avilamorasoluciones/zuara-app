@@ -77,9 +77,9 @@ create or replace function public.zuara_mutate(
 )
 returns jsonb
 language plpgsql
-security invoker
-set search_path = public
-as $$
+security definer
+set search_path = public, private
+as $
 declare
   u record;
   v record;
@@ -608,3 +608,7 @@ as $$ select 837421::bigint $$;
 
 grant execute on function public.zuara_mutate(text,jsonb) to authenticated;
 grant execute on function public.zuara_lock_key() to authenticated;
+
+
+revoke execute on function public.zuara_mutate(text,jsonb) from public, anon;
+grant execute on function public.zuara_mutate(text,jsonb) to authenticated;
