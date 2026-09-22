@@ -68,9 +68,6 @@ $$;
 
 grant execute on function public.zuara_existencias() to authenticated;
 
-create unique index if not exists uq_historico_tasas_fecha_binance_euro
-on public.historico_tasas(fecha, binance, euro_bcv);
-
 create or replace function public.zuara_mutate(
   p_action text,
   p_payload jsonb default '{}'::jsonb
