@@ -226,39 +226,30 @@ begin
       return jsonb_build_object('error','Ya existe una nota de entrega con ese consecutivo.','status_code',409);
     end if;
 
-    -- Validar stock agregado por producto, exactamente antes de escribir.
-    for v_item in select value from jsonb_array_elements(p_payload->'detalles') loop
-      v_producto := coalesce(nullif(v_item->>'producto_id','')::bigint,0);
-      v_cantidad := coalesce(nullif(v_item->>'cantidad','')::double precision,0);
-      if v_producto<=0 or v_cantidad<=0 then
+    -- Validar stock agregado por producto, igual que la versión Flask.
+    for v_producto, v_cantidad in
+      select
+        (value->>'producto_id')::bigint,
+        sum((value->>'cantidad')::double precision)
+      from jsonb_array_elements(p_payload->'detalles')
+      group by (value->>'producto_id')::bigint
+    loop
+      if v_producto <= 0 or v_cantidad <= 0 then
         return jsonb_build_object('error','Cada detalle de venta debe tener un producto y una cantidad mayor a cero.','status_code',400);
       end if;
-      if exists(
-        select 1
-        from public.movimientos
-        where producto_id=v_producto
-        group by producto_id
-        having
-          sum(case
-            when tipo in ('Inventario Inicial','Compra','Devolución por venta','Ajuste administrativo - Entrada') then cantidad
-            when tipo in ('Venta','Descarga por daño/motivo','Devolución por compra','Ajuste administrativo - Salida') then -cantidad
-            else 0
-          end)
-          - (
-            sum(case when almacen_destino_id in (9998,9999) then cantidad else 0 end)
-            - sum(case when almacen_origen_id in (9998,9999) then cantidad else 0 end)
-          ) < 0
-      ) then
-        null;
-      end if;
+
       select coalesce(sum(case
         when tipo in ('Inventario Inicial','Compra','Devolución por venta','Ajuste administrativo - Entrada') then cantidad
         when tipo in ('Venta','Descarga por daño/motivo','Devolución por compra','Ajuste administrativo - Salida') then -cantidad
         else 0 end),0)
-        - (coalesce(sum(case when almacen_destino_id in (9998,9999) then cantidad else 0 end),0)
-        - coalesce(sum(case when almacen_origen_id in (9998,9999) then cantidad else 0 end),0))
+        - (
+          coalesce(sum(case when almacen_destino_id in (9998,9999) then cantidad else 0 end),0)
+          - coalesce(sum(case when almacen_origen_id in (9998,9999) then cantidad else 0 end),0)
+        )
       into v_stock
-      from public.movimientos where producto_id=v_producto;
+      from public.movimientos
+      where producto_id=v_producto;
+
       if v_cantidad > v_stock then
         return jsonb_build_object('error','No hay existencias suficientes para completar la venta.','status_code',400);
       end if;
@@ -399,7 +390,7 @@ begin
       return jsonb_build_object('error','Debe seleccionar al menos un producto con cantidad válida para devolver.','status_code',400);
     end if;
 
-    v_consecutivo := replace(v_consecutivo,'NE','NC',1);
+    v_consecutivo := regexp_replace(v_consecutivo,'^NE','NC');
     if exists(select 1 from public.notas_credito where consecutivo=v_consecutivo) then
       v_consecutivo := v_consecutivo || '-' || extract(epoch from timezone('America/Caracas',now()))::bigint::text;
     end if;
