@@ -501,7 +501,28 @@ set search_path = ''
 as $$
 declare d date;
 begin
-  if p_fecha is null or p_fecha !~ '^\\d{4}-\\d{2}-\\d{2}$' then
+  if p_fecha is null or p_fecha !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2} then
+    return false;
+  end if;
+  begin
+    d := p_fecha::date;
+  exception when others then
+    return false;
+  end;
+  return d::text = p_fecha;
+end;
+$$;
+
+alter table public.historico_tasas
+  drop constraint if exists historico_tasas_fecha_valida;
+alter table public.historico_tasas
+  add constraint historico_tasas_fecha_valida
+  check (private.validar_fecha_iso_real(fecha));
+
+-- Elimina permisos anónimos y deja las funciones privadas fuera de la API.
+revoke all on schema private from public;
+grant usage on schema private to authenticated;
+ then
     return false;
   end if;
   begin
