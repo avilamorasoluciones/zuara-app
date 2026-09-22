@@ -45,7 +45,7 @@ BATCH_SIZE = int(os.getenv("BATCH_SIZE", "500"))
 
 
 def get_columns(conn, table):
-    with conn.cursor() as cur:
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute("""
             select column_name
             from information_schema.columns
@@ -58,7 +58,7 @@ def get_columns(conn, table):
 def get_pk(conn, table):
     if table in PRIMARY_KEYS:
         return PRIMARY_KEYS[table]
-    with conn.cursor() as cur:
+    with conn.cursor(cursor_factory=RealDictCursor) as cur:
         cur.execute("""
             select kcu.column_name
             from information_schema.table_constraints tc
@@ -156,10 +156,15 @@ def main():
         )
 
     totals = {}
-    with psycopg.connect(neon_url, row_factory=dict_row) as src,          psycopg.connect(supabase_url, row_factory=dict_row) as dst:
+    src = psycopg2.connect(neon_url)
+    dst = psycopg2.connect(supabase_url)
+    try:
         for table in TABLE_ORDER:
             totals[table] = copy_table(src, dst, table)
         sync_sequences(dst)
+    finally:
+        src.close()
+        dst.close()
 
     print("\nMigración terminada.")
     for table, count in totals.items():
