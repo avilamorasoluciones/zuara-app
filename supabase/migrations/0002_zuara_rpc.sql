@@ -607,7 +607,7 @@ immutable
 as $$ select 837421::bigint $$;
 
 grant execute on function public.zuara_mutate(text,jsonb) to authenticated;
-grant execute on function public.zuara_lock_key() to authenticated;
+revoke execute on function public.zuara_lock_key() from public, anon, authenticated;
 
 
 revoke execute on function public.zuara_mutate(text,jsonb) from public, anon;
