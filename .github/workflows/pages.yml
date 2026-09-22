@@ -2,7 +2,7 @@ name: Publicar ZUARA en GitHub Pages
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "supabase-web-migration"]
     paths:
       - "index.html"
       - "static/**"
