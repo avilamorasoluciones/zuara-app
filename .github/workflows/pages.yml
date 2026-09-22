@@ -4,6 +4,7 @@ on:
   push:
     branches: ["main", "supabase-web-migration"]
     paths:
+      - "templates/**"
       - "index.html"
       - "static/**"
       - "assets/**"
@@ -31,6 +32,9 @@ jobs:
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
+
+      - name: Build static site
+        run: cp templates/index.html index.html
 
       - name: Upload static site
         uses: actions/upload-pages-artifact@v3
