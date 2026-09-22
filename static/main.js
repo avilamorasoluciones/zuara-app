@@ -104,7 +104,11 @@ function inicializarUI() {
 }
 
 function crearHTMLModal(id, titulo, campos) {
-    return `<div class="modal fade" id="modal-${id}" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content ios-modal border-0 shadow-lg"><div class="modal-header border-0 pb-0 pt-4 px-4 d-flex justify-content-between align-items-center"><h5 class="modal-title fw-bolder" id="titulo-modal-${id}">${titulo}</h5><button type="button" class="btn-close rounded-circle bg-light p-2 m-0" data-bs-dismiss="modal"></button></div><div class="modal-body p-4 pt-3"><form onsubmit="guardarFormulario(event, '${id}')"><input type="hidden" id="id-${id}">${campos}<button type="submit" class="btn btn-theme w-100 rounded-pill fw-bold py-2 shadow-sm bounce-hover fs-6">Guardar</button></form></div></div></div></div>`;
+    const sinValidacionNativa = id === 'tasas' ? ' novalidate' : '';
+    const accionGuardar = id === 'tasas'
+        ? `type="button" onclick="guardarFormulario(event, 'tasas')"`
+        : `type="submit"`;
+    return `<div class="modal fade" id="modal-${id}" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content ios-modal border-0 shadow-lg"><div class="modal-header border-0 pb-0 pt-4 px-4 d-flex justify-content-between align-items-center"><h5 class="modal-title fw-bolder" id="titulo-modal-${id}">${titulo}</h5><button type="button" class="btn-close rounded-circle bg-light p-2 m-0" data-bs-dismiss="modal"></button></div><div class="modal-body p-4 pt-3"><form${sinValidacionNativa} onsubmit="guardarFormulario(event, '${id}')"><input type="hidden" id="id-${id}">${campos}<button ${accionGuardar} class="btn btn-theme w-100 rounded-pill fw-bold py-2 shadow-sm bounce-hover fs-6">Guardar</button></form></div></div></div></div>`;
 }
 
 function calcBrechaForm() {
@@ -343,8 +347,7 @@ function actualizarEstadoTasasHoy(tasas) {
 
 function aplicarLogicaDescuentos(estado) {
     const permit = (estado === 'true');
-    if(!permit) { document.getElementById('col-descuento-input').classList.add('d-none'); document.querySelectorAll('.col-desc-header, .col-desc-cell').forEach(el => el.classList.add('d-none')); }
-    else { document.getElementById('col-descuento-input').classList.remove('d-none'); document.querySelectorAll('.col-desc-header, .col-desc-cell').forEach(el => el.classList.remove('d-none')); }
+    if(!permit) { document.getElementById('col-descuento-input').classList.add('d-none'); document.querySelectorAll('.col-desc-header, .col-desc-cell').forEach(el => el.classList.add('d-none')); }    else { document.getElementById('col-descuento-input').classList.remove('d-none'); document.querySelectorAll('.col-desc-header, .col-desc-cell').forEach(el => el.classList.remove('d-none')); }
 }
 
 function actualizarContadores(conteo = {}) {
@@ -497,8 +500,7 @@ async function guardarUsuario(evento) {
     const boton = evento.submitter || document.querySelector('#form-usuario button[type="submit"]');
 
     if (!nombre || !usuario) return alert('Completa el nombre y el usuario.');
-    if ((!id && contrasena.length < 8) || (contrasena && contrasena.length < 8)) return alert('La contraseña debe tener al menos 8 caracteres.');
-    if (contrasena !== confirmar) return alert('Las contraseñas no coinciden.');
+    if ((!id && contrasena.length < 8) || (contrasena && contrasena.length < 8)) return alert('La contraseña debe tener al menos 8 caracteres.');    if (contrasena !== confirmar) return alert('Las contraseñas no coinciden.');
 
     const payload = {
         nombre,
@@ -540,13 +542,27 @@ async function eliminarUsuario(id) {
 
 // ----- FUNCIONES DE TASAS, COBERTURAS Y LISTA DE PRECIOS ----- //
 
+function formatearFechaTasa(fecha) {
+    const texto = String(fecha || '').trim();
+    const match = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(texto);
+    return match ? `${match[3]}/${match[2]}/${match[1]}` : texto;
+}
+
+function validarFechaTasa(fecha) {
+    const texto = String(fecha || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(texto)) return false;
+    const [anio, mes, dia] = texto.split('-').map(Number);
+    const prueba = new Date(Date.UTC(anio, mes - 1, dia));
+    return prueba.getUTCFullYear() === anio && prueba.getUTCMonth() === mes - 1 && prueba.getUTCDate() === dia;
+}
+
 function renderTablaTasas() {
     let tb = document.querySelector('#tabla-tasas tbody');
     if(!tb) return;
     tb.innerHTML = '';
     dataGlobal.tasas.forEach(t => {
         let btnAcc = `<button class="btn-action btn-edit me-1" onclick="llenarModalEditar('tasas', '${encodeURIComponent(JSON.stringify(t))}')"><i class="fa-solid fa-pen"></i></button><button class="btn-action btn-delete" onclick="eliminarRegistro('tasas', ${t.id})"><i class="fa-solid fa-trash"></i></button>`;
-        tb.innerHTML += `<tr><td>${t.fecha} <br> <small class="text-muted">${t.hora}</small></td><td class="fw-bold">Bs ${parseFloat(t.dolar_bcv||0).toFixed(2)}</td><td class="fw-bold text-theme-solid">Bs ${parseFloat(t.euro_bcv||0).toFixed(2)}</td><td class="fw-bold text-warning">Bs ${parseFloat(t.binance||0).toFixed(2)}</td><td class="text-muted">Bs ${parseFloat(t.bybit||0).toFixed(2)}</td><td class="text-muted">Bs ${parseFloat(t.dolar_promedio||0).toFixed(2)}</td><td class="text-muted">Bs ${parseFloat(t.zelle||0).toFixed(2)}</td><td class="text-muted">Bs ${parseFloat(t.paypal||0).toFixed(2)}</td><td class="fw-bolder ${(t.brecha||0) > 0 ? 'text-danger':'text-success'}">${((t.brecha||0)*100).toFixed(2)}%</td><td>${btnAcc}</td></tr>`;
+        tb.innerHTML += `<tr><td>${formatearFechaTasa(t.fecha)} <br> <small class="text-muted">${t.hora}</small></td><td class="fw-bold">Bs ${parseFloat(t.dolar_bcv||0).toFixed(2)}</td><td class="fw-bold text-theme-solid">Bs ${parseFloat(t.euro_bcv||0).toFixed(2)}</td><td class="fw-bold text-warning">Bs ${parseFloat(t.binance||0).toFixed(2)}</td><td class="text-muted">Bs ${parseFloat(t.bybit||0).toFixed(2)}</td><td class="text-muted">Bs ${parseFloat(t.dolar_promedio||0).toFixed(2)}</td><td class="text-muted">Bs ${parseFloat(t.zelle||0).toFixed(2)}</td><td class="text-muted">Bs ${parseFloat(t.paypal||0).toFixed(2)}</td><td class="fw-bolder ${(t.brecha||0) > 0 ? 'text-danger':'text-success'}">${((t.brecha||0)*100).toFixed(2)}%</td><td>${btnAcc}</td></tr>`;
     });
 }
 
@@ -617,7 +633,15 @@ window.subirExcelTasas = async function() {
 
 window.cargarListaPreciosDinamica = async function() {
     if (!exigirPermiso('lista_precios')) return;
-    let r = await fetch('/api/lista_precios_data');
+    let fechaConsulta = '';
+    if (typeof esAdministrador === 'function' && esAdministrador()) {
+        const campoFecha = document.getElementById('v_fecha_facturacion');
+        fechaConsulta = campoFecha?.value || '';
+    }
+    const urlListaPrecios = fechaConsulta
+        ? `/api/lista_precios_data?fecha=${encodeURIComponent(fechaConsulta)}`
+        : '/api/lista_precios_data';
+    let r = await fetch(urlListaPrecios);
     let data = await r.json();
     actualizarEstadoTasasHoy(data.tasas);
     document.getElementById('lp_factor').innerText = (1 + data.tasas.cobertura_activa).toFixed(2);
@@ -680,8 +704,7 @@ function poblarSelectNotasCredito() {
         html = '<option value="" disabled selected>El cliente no tiene NC disponibles</option>';
     } else {
         notasCreditoClienteActual.forEach(nc => {
-            let disponible = parseFloat(nc.total_eur) - parseFloat(nc.saldo_usado_eur || 0);
-            html += `<option value="${nc.id}" data-saldo="${disponible}" data-bs="${nc.total_bs}">${nc.consecutivo} - Saldo: €${disponible.toFixed(2)}</option>`;
+            let disponible = parseFloat(nc.total_eur) - parseFloat(nc.saldo_usado_eur || 0);            html += `<option value="${nc.id}" data-saldo="${disponible}" data-bs="${nc.total_bs}">${nc.consecutivo} - Saldo: €${disponible.toFixed(2)}</option>`;
         });
     }
     sel.innerHTML = html;
@@ -750,8 +773,24 @@ function abrirModal(m) {
         document.getElementById('t_fecha').value = `${yy}-${mm}-${dd}`;
         document.getElementById('t_hora').value = n.toTimeString().substring(0,5);
     }
+    const modalElement = document.getElementById(`modal-${m}`);
+    const idElement = document.getElementById(`id-${m}`);
+    if (!modalElement || !idElement) {
+        console.error(`No se encontró el modal dinámico para: ${m}`);
+        alert('No se pudo abrir el formulario. Recarga la página e inténtalo nuevamente.');
+        return;
+    }
+
     document.getElementById(`titulo-modal-${m}`).innerText = 'Nuevo Registro';
-    new bootstrap.Modal(document.getElementById(`modal-${m}`)).show();
+
+    // Los modales dinámicos viven inicialmente dentro de un contenedor con scroll.
+    // Bootstrap recomienda colocar los modales en un nivel alto del DOM para evitar
+    // problemas de renderizado/posicionamiento de position: fixed.
+    if (m === 'tasas' && modalElement.parentElement !== document.body) {
+        document.body.appendChild(modalElement);
+    }
+
+    bootstrap.Modal.getOrCreateInstance(modalElement).show();
 }
 
 function generarNEN() {
@@ -804,7 +843,38 @@ async function prepararVenta() {
         return;
     }
          
-    let r = await fetch('/api/lista_precios_data');
+    // El administrador debe poder elegir la fecha ANTES de consultar la tasa.
+    // Este bloque también funciona si el navegador conserva una versión anterior
+    // del wrapper que crea el selector dinámicamente.
+    const adminFacturacion = typeof esAdministrador === 'function' && esAdministrador();
+    let campoFecha = document.getElementById('v_fecha_facturacion');
+    if (adminFacturacion && !campoFecha) {
+        const encabezado = document.querySelector('#modulo-ventas .nota-entrega-header');
+        if (encabezado) {
+            const wrap = document.createElement('div');
+            wrap.id = 'v_fecha_facturacion_wrap';
+            wrap.className = 'mb-3 mb-md-0';
+            wrap.innerHTML =
+                '<span class="fw-bold text-muted text-uppercase small letter-spacing">Fecha a facturar</span>' +
+                '<input type="date" id="v_fecha_facturacion" class="form-control fw-bolder text-theme-solid mt-1" required>' +
+                '<small class="text-muted d-block mt-1"><i class="fa-solid fa-shield-halved me-1"></i>El administrador puede elegir la fecha y se aplicará la tasa de esa fecha.</small>';
+            encabezado.insertBefore(wrap, encabezado.firstElementChild);
+            campoFecha = document.getElementById('v_fecha_facturacion');
+            if (campoFecha) {
+                campoFecha.value = new Intl.DateTimeFormat('en-CA', {
+                    timeZone: 'America/Caracas', year: 'numeric', month: '2-digit', day: '2-digit'
+                }).format(new Date());
+                campoFecha.addEventListener('change', () => {
+                    if (typeof actualizarNomenclatura === 'function') actualizarNomenclatura();
+                });
+            }
+        }
+    }
+    let fechaConsulta = adminFacturacion ? (campoFecha?.value || '') : '';
+    const urlListaPrecios = fechaConsulta
+        ? '/api/lista_precios_data?fecha=' + encodeURIComponent(fechaConsulta)
+        : '/api/lista_precios_data';
+    let r = await fetch(urlListaPrecios, { credentials: 'same-origin', cache: 'no-store' });
     if (!r.ok) {
         let errorData = {};
         try { errorData = await r.json(); } catch (_) {}
@@ -814,7 +884,17 @@ async function prepararVenta() {
     let res = await r.json();
          
     if(!res.tasas || !res.tasas.registrada_hoy) {
-        if (tienePermiso('agregar_tasa')) {
+        // El administrador NO debe quedar bloqueado por la falta de tasa de hoy:
+        // puede elegir una fecha histórica que sí tenga tasa.
+        if (adminFacturacion) {
+            showModule('ventas');
+            const fechaActiva = document.getElementById('v_fecha_facturacion')?.value || fechaConsulta || '';
+            alert(
+                "⚠️ NO HAY TASA PARA LA FECHA SELECCIONADA\n\n" +
+                "No existe una tasa registrada para " + (fechaActiva || "la fecha seleccionada") + ".\n\n" +
+                "Como administrador, selecciona otra fecha en «Fecha a facturar» que tenga una tasa registrada y vuelve a preparar la Nota de Entrega."
+            );
+        } else if (tienePermiso('agregar_tasa')) {
             const continuar = confirm(
                 "⚠️ NO SE PUEDE FACTURAR TODAVÍA\n\n" +
                 "No se ha registrado la tasa oficial del día de hoy.\n\n" +
@@ -997,8 +1077,7 @@ function renderTabla(m) {
     if (c.pag > totalPags) c.pag = totalPags;
     const ini = (c.pag - 1) * c.filas;
     const fn = ini + parseInt(c.filas);
-    const most = filt.slice(ini, fn);
-    const tb = document.querySelector(`#tabla-${m} tbody`);
+    const most = filt.slice(ini, fn);    const tb = document.querySelector(`#tabla-${m} tbody`);
     tb.innerHTML = '';
          
     most.forEach((i, idx) => {
@@ -1015,8 +1094,7 @@ function renderTabla(m) {
         else if(m === 'productos') {
             let btnFoto = i.foto ? `<button class="btn btn-sm btn-light border rounded-circle text-theme-solid" onclick="mostrarImagenProducto('${i.foto}')"><i class="fa-solid fa-camera"></i></button>` : '-';
             html = `<tr><td>${btnFoto}</td><td class="text-muted">${i.codigo_barras||'-'}</td><td class="fw-bold text-theme-solid">${i.descripcion}</td><td><span class="badge bg-theme-light text-theme-solid">${i.categoria_nombre||'N/A'}</span></td><td class="fw-bold">${i.unidad_medida}</td><td class="fw-bolder text-success" style="cursor:pointer;" title="Haz click en Editar para cambiar el Precio Objetivo">$${parseFloat(i.precio_usd||0).toFixed(2)}</td><td class="text-danger fw-bold">${i.stock_minimo}</td><td>${i.estado === 'ACTIVO' ? '<span class="badge bg-success">ACTIVO</span>' : '<span class="badge bg-danger">NO DISP.</span>'}</td><td>${btnAcc}</td></tr>`;
-        }
-        else if(m === 'existencias') {
+        }        else if(m === 'existencias') {
             const disp = i.stock_disponible_venta;
             const alerta = disp <= i.stock_minimo ? 'text-danger fw-bolder fs-5' : 'text-success fw-bolder fs-5';
             html = `<tr>
@@ -1065,7 +1143,8 @@ function renderTabla(m) {
             }
             const btnVenta = `<button class="btn-action btn-edit me-1 text-primary shadow-sm" onclick="verPreviewNota('${i.consecutivo}', ${i.id})" title="Ver PDF Factura Original"><i class="fa-solid fa-file-pdf"></i></button>${ncBtn}<button class="btn-action btn-delete text-danger shadow-sm" onclick="eliminarRegistro('ventas', ${i.id})" title="Eliminar"><i class="fa-solid fa-trash"></i></button>`;
             
-            html = `<tr><td class="fw-bold">${i.consecutivo} ${badgeSemaforo}</td><td class="small text-muted fw-bold">${i.fecha_registro}</td><td class="fw-bold text-theme-solid">${i.cliente_nombre||'-'}</td><td class="fw-bold text-muted">${i.cliente_telefono||'-'}</td><td class="fw-bolder fs-5 text-theme-solid">€ ${parseFloat(i.total_eur).toFixed(2)}</td><td><span class="badge bg-warning text-dark fw-bold">Asociada</span></td><td>${btnVenta}</td></tr>`;
+            const fechaVentaMostrar = i.fecha_facturacion || (i.fecha_registro || '').split(' ')[0];
+            html = `<tr><td class="fw-bold">${i.consecutivo} ${badgeSemaforo}</td><td class="small text-muted fw-bold">${fechaVentaMostrar}</td><td class="fw-bold text-theme-solid">${i.cliente_nombre||'-'}</td><td class="fw-bold text-muted">${i.cliente_telefono||'-'}</td><td class="fw-bolder fs-5 text-theme-solid">€ ${parseFloat(i.total_eur).toFixed(2)}</td><td><span class="badge bg-warning text-dark fw-bold">Asociada</span></td><td>${btnVenta}</td></tr>`;
         }
         tb.innerHTML += `<tr style="animation-delay: ${dly}s">${html}</tr>`;
     });
@@ -1135,20 +1214,49 @@ function llenarModalEditar(m, encodedStr) {
 
 async function guardarFormulario(e, m) {
     e.preventDefault();
+
     const id = document.getElementById(`id-${m}`).value;
     const permiso = m === 'tasas' ? (id ? 'parametros' : 'agregar_tasa') : (m === 'coberturas' ? 'parametros' : m);
     if (!exigirPermiso(permiso)) return;
+
     let payload = {};
-         
+
     if(m === 'clientes') payload = { documento: document.getElementById('c_doc').value, nombre: document.getElementById('c_nom').value, telefono: document.getElementById('c_cod').value + document.getElementById('c_tel').value, correo: document.getElementById('c_cor').value, pais: document.getElementById('c_pais').value, estado: document.getElementById('c_est').value, municipio: document.getElementById('c_mun').value, direccion_entrega: document.getElementById('c_dir_ent').value, punto_referencia: document.getElementById('c_ref').value, coordenadas: document.getElementById('c_coo').value, tipo_envio: document.getElementById('c_tipo_env').value };
     else if(m === 'proveedores') payload = { nombre: document.getElementById('p_nom').value, tipo: document.getElementById('p_tipo').value, telefono: document.getElementById('p_tel').value, correo: document.getElementById('p_cor').value, direccion: document.getElementById('p_dir').value };
     else if(m === 'almacenes') payload = { nombre: document.getElementById('a_nom').value, ubicacion: document.getElementById('a_ubi').value };
     else if(m === 'categorias') payload = { nombre: document.getElementById('cat_nom').value, descripcion: document.getElementById('cat_des').value };
     else if(m === 'productos') payload = { codigo_barras: document.getElementById('prod_bar').value, descripcion: document.getElementById('prod_des').value, categoria_id: document.getElementById('prod_cat').value, proveedor_id: document.getElementById('prod_prov').value, unidad_medida: document.getElementById('prod_uni').value, precio_usd: document.getElementById('prod_precio_usd').value, stock_minimo: document.getElementById('prod_min').value, estado: document.getElementById('prod_est').value, foto: document.getElementById('prod_foto').value };
     else if(m === 'tasas') {
-        let horaFormat = document.getElementById('t_hora').value;
+        const fecha = document.getElementById('t_fecha').value;
+        const binance = document.getElementById('t_bin').value;
+        const euro = document.getElementById('t_ebcv').value;
+        const hora = document.getElementById('t_hora').value;
+
+        if (!fecha || !binance || !euro || !hora) {
+            alert('Completa los campos obligatorios: Fecha, Binance P2P, Euro BCV y Hora.');
+            return;
+        }
+
+        if (!validarFechaTasa(fecha)) {
+            alert('La fecha no es válida. Selecciona una fecha real en formato DD/MM/AAAA.');
+            document.getElementById('t_fecha')?.focus();
+            return;
+        }
+
+        let horaFormat = hora;
         if(horaFormat.length === 5) horaFormat += ":00";
-        payload = { fecha: document.getElementById('t_fecha').value, hora: horaFormat, dolar_bcv: document.getElementById('t_dbcv').value, binance: document.getElementById('t_bin').value, bybit: document.getElementById('t_byb').value, dolar_promedio: document.getElementById('t_dpro').value, euro_bcv: document.getElementById('t_ebcv').value, zelle: document.getElementById('t_zel').value, paypal: document.getElementById('t_pay').value };
+
+        payload = {
+            fecha,
+            hora: horaFormat,
+            dolar_bcv: document.getElementById('t_dbcv').value,
+            binance,
+            bybit: document.getElementById('t_byb').value,
+            dolar_promedio: document.getElementById('t_dpro').value,
+            euro_bcv: euro,
+            zelle: document.getElementById('t_zel').value,
+            paypal: document.getElementById('t_pay').value
+        };
     }
     else if(m === 'coberturas') {
         payload = {
@@ -1159,20 +1267,52 @@ async function guardarFormulario(e, m) {
             estado: document.getElementById('cob_estado').value
         };
     }
-         
-    let res = await fetch(id ? `/api/${m}/${id}` : `/api/${m}`, { method: id ? 'PUT' : 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
-    if(!res.ok) { alert("Hubo un error al guardar. Revisa que llenaste todos los campos."); return; }
-    bootstrap.Modal.getInstance(document.getElementById(`modal-${m}`)).hide();
-    await cargarDataTotal();
 
-    // Si la tasa se registró desde el flujo de Nota de Entrega, volvemos
-    // automáticamente a la venta para que el usuario pueda continuar.
-    if (m === 'tasas' && volverANotaTrasRegistrarTasa) {
-        volverANotaTrasRegistrarTasa = false;
-        await prepararVenta();
+    const botonGuardar = document.querySelector(`#modal-${m} form button[type="submit"]`);
+    if (botonGuardar) {
+        botonGuardar.disabled = true;
+        botonGuardar.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-2"></i>Guardando...';
+    }
+
+    try {
+        const res = await fetch(id ? `/api/${m}/${id}` : `/api/${m}`, {
+            method: id ? 'PUT' : 'POST',
+            headers: {'Content-Type': 'application/json'},
+            credentials: 'same-origin',
+            body: JSON.stringify(payload)
+        });
+
+        const resultado = await res.json().catch(() => ({}));
+
+        if(!res.ok) {
+            if (res.status === 401 || res.status === 403) {
+                sesionActual = null;
+                actualizarSesionEnInterfaz();
+                aplicarPermisosInterfaz();
+                alert(resultado.error || 'La sesión actual ya no es válida. Inicia sesión nuevamente.');
+                abrirModalLogin();
+                return;
+            }
+            throw new Error(resultado.error || 'Hubo un error al guardar el registro.');
+        }
+
+        bootstrap.Modal.getInstance(document.getElementById(`modal-${m}`))?.hide();
+        await cargarDataTotal();
+
+        if (m === 'tasas' && volverANotaTrasRegistrarTasa) {
+            volverANotaTrasRegistrarTasa = false;
+            await prepararVenta();
+        }
+    } catch (error) {
+        console.error('Error al guardar registro:', error);
+        alert(error.message || 'No se pudo guardar el registro. Revisa la conexión e inténtalo nuevamente.');
+    } finally {
+        if (botonGuardar) {
+            botonGuardar.disabled = false;
+            botonGuardar.innerHTML = 'Guardar';
+        }
     }
 }
-
 function eliminarRegistro(m, id) {
     const permiso = ['tasas', 'coberturas'].includes(m) ? 'parametros' : (m === 'ventas' ? 'historial_ventas' : m);
     if (!exigirPermiso(permiso)) return;
@@ -1304,8 +1444,7 @@ function agregarAlCarrito() {
     let totalEur = subTotalEur * (1 - (desc / 100));
     let subTotalBs = cant * precioBs;
     let totalBs = subTotalBs * (1 - (desc / 100));
-         
-    carritoVentas.push({
+             carritoVentas.push({
         producto_id: prod.id, codigo: prod.codigo, descripcion: prod.descripcion, cantidad: cant,
         descuento: desc, precio_eur: precioBaseEuro, sub_eur: subTotalEur, total_eur: totalEur,
         pre_bs: precioBs, sub_bs: subTotalBs, tot_bs: totalBs
@@ -1397,7 +1536,8 @@ async function procesarVenta() {
         brecha_dia: window.estadoSemaforo.brecha,
         estado_semaforo: document.getElementById('top_semaforo_txt').innerText.split(' ')[1] || 'EMITIDA',
         metodo_pago: pago || 'No especificado',
-        nc_id: nc_id
+        nc_id: nc_id,
+        fecha_facturacion: document.getElementById('v_fecha_facturacion')?.value || ''
     };
          
     const res = await fetch('/api/ventas', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload) });
@@ -1437,7 +1577,7 @@ async function buscarNotaParaDevolucion() {
     if(!venta) return alert("Factura no encontrada. Revisa el consecutivo.");
          
     document.getElementById('dev_factura_num').innerText = venta.consecutivo;
-    document.getElementById('dev_factura_fecha').innerText = venta.fecha_registro;
+    document.getElementById('dev_factura_fecha').innerText = venta.fecha_facturacion || venta.fecha_registro;
     document.getElementById('dev_factura_cliente').innerText = venta.cliente_nombre;
          
     const res = await fetch(`/api/ventas/detalles/${venta.consecutivo}`);
@@ -1498,7 +1638,6 @@ async function procesarDevolucionDefinitiva() {
         alert("Error procesando devolución.");
     }
 }
-
 window.verPreviewNota = async function(consecutivo, id) {
     if (!exigirPermiso('historial_ventas')) return;
     let venta = dataGlobal.ventas.find(v => v.id === id);
@@ -1506,7 +1645,7 @@ window.verPreviewNota = async function(consecutivo, id) {
     document.getElementById('pdf_empresa').innerText = 'ZUARA APP';
     document.getElementById('pdf_consecutivo').innerText = venta.consecutivo;
     document.getElementById('pdf_tasa_eur').innerText = venta.tasa_bcv_euro_aplicada ? venta.tasa_bcv_euro_aplicada.toFixed(2) : '0.00';
-    document.getElementById('pdf_fecha').innerText = venta.fecha_registro.split(' ')[0];
+    document.getElementById('pdf_fecha').innerText = venta.fecha_facturacion || venta.fecha_registro.split(' ')[0];
     document.getElementById('pdf_hora').innerText = venta.fecha_registro.split(' ')[1] || '';
     document.getElementById('pdf_cli_nom').innerText = venta.cliente_nombre;
     document.getElementById('pdf_cli_tel').innerText = venta.cliente_telefono;
@@ -1649,14 +1788,14 @@ window.generarVistaPreviaReporte = function() {
          
     if(tipo === 'ventas') {
         th.innerHTML = `<tr><th>Fecha / Hora</th><th>Nº Factura</th><th>Cliente</th><th>Monto EUR</th><th>Monto BS</th><th>Método de Pago</th><th>Usuario</th></tr>`;
-        let filtrado = dataGlobal.ventas.filter(v => { let d = new Date(v.fecha_registro); return d >= desde && d <= hasta; });
+        let filtrado = dataGlobal.ventas.filter(v => { let d = new Date((v.fecha_facturacion || (v.fecha_registro || '').split(' ')[0]) + "T00:00:00"); return d >= desde && d <= hasta; });
         filtrado.forEach(v => {
-            tb.innerHTML += `<tr><td>${v.fecha_registro}</td><td class="fw-bold">${v.consecutivo}</td><td>${v.cliente_nombre}</td><td>€ ${parseFloat(v.total_eur).toFixed(2)}</td><td>Bs ${parseFloat(v.total_bs || 0).toFixed(2)}</td><td>${v.metodo_pago||'-'}</td><td>${v.registrado_por}</td></tr>`;
+            const fechaReporte = v.fecha_facturacion || (v.fecha_registro || '').split(' ')[0];
+            tb.innerHTML += `<tr><td>${fechaReporte}</td><td class="fw-bold">${v.consecutivo}</td><td>${v.cliente_nombre}</td><td>€ ${parseFloat(v.total_eur).toFixed(2)}</td><td>Bs ${parseFloat(v.total_bs || 0).toFixed(2)}</td><td>${v.metodo_pago||'-'}</td><td>${v.registrado_por}</td></tr>`;
         });
     }
     else if(tipo === 'devoluciones_venta') {
-        th.innerHTML = `<tr><th>Fecha</th><th>Consecutivo</th><th>Movimiento</th><th>Producto</th><th>Cant. Devuelta</th><th>Doc. Afectado</th><th>Resp.</th></tr>`;
-        let filtrado = dataGlobal.kardex.filter(k => { let d = new Date(k.fecha_registro); return d >= desde && d <= hasta && k.tipo === 'Devolución por venta'; });
+        th.innerHTML = `<tr><th>Fecha</th><th>Consecutivo</th><th>Movimiento</th><th>Producto</th><th>Cant. Devuelta</th><th>Doc. Afectado</th><th>Resp.</th></tr>`;        let filtrado = dataGlobal.kardex.filter(k => { let d = new Date(k.fecha_registro); return d >= desde && d <= hasta && k.tipo === 'Devolución por venta'; });
         filtrado.forEach(k => { tb.innerHTML += `<tr><td>${k.fecha_registro}</td><td class="fw-bold">${k.consecutivo}</td><td>${k.tipo}</td><td>${k.producto_nombre}</td><td>${k.cantidad}</td><td>${k.documento}</td><td>${k.registrado_por}</td></tr>`; });
     }
     else if(tipo === 'devoluciones_compra') {
@@ -1796,3 +1935,96 @@ window.addEventListener('load', async () => {
         abrirModalLogin('Inicia sesión para acceder a ZUARA APP.');
     }
 });
+
+/* ZUARA APP · Fecha personalizada de facturación para administradores.
+   La tasa siempre se obtiene del día del sistema desde el backend.
+   Los usuarios normales no pueden alterar la fecha de facturación.
+*/
+(function () {
+    'use strict';
+
+    function fechaHoyLocal() {
+        // La fecha operativa de ZUARA es Venezuela, no la zona horaria del navegador.
+        return new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'America/Caracas',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        }).format(new Date());
+    }
+
+    function asegurarSelectorFecha() {
+        const modulo = document.getElementById('modulo-ventas');
+        if (!modulo || document.getElementById('v_fecha_facturacion_wrap')) return;
+
+        const admin = typeof esAdministrador === 'function' && esAdministrador();
+        const encabezado = modulo.querySelector('.nota-entrega-header');
+        if (!encabezado) return;
+
+        const wrap = document.createElement('div');
+        wrap.id = 'v_fecha_facturacion_wrap';
+        wrap.className = 'mb-3 mb-md-0';
+        wrap.innerHTML = admin
+            ? '<span class="fw-bold text-muted text-uppercase small letter-spacing">Fecha a facturar</span>' +
+              '<input type="date" id="v_fecha_facturacion" class="form-control fw-bolder text-theme-solid mt-1" required>' +
+              '<small class="text-muted d-block mt-1"><i class="fa-solid fa-shield-halved me-1"></i>El administrador puede elegir la fecha y se aplicará la tasa registrada de esa fecha.</small>'
+            : '<input type="hidden" id="v_fecha_facturacion">';
+
+        encabezado.insertBefore(wrap, encabezado.firstElementChild);
+        const campo = document.getElementById('v_fecha_facturacion');
+        if (campo) {
+            campo.value = fechaHoyLocal();
+            campo.addEventListener('change', function () {
+                if (typeof actualizarNomenclatura === 'function') actualizarNomenclatura();
+            });
+        }
+    }
+
+    const generarNENOriginal = window.generarNEN;
+    window.generarNEN = function () {
+        const campo = document.getElementById('v_fecha_facturacion');
+        const fecha = campo && campo.value ? campo.value : fechaHoyLocal();
+        const tipoEnvio = document.getElementById('v_env_tip')?.value || 'Nacional';
+        const letra = tipoEnvio === 'Local' ? 'L' : 'N';
+        const [yy, mm, dd] = fecha.split('-');
+        const consec = (dataGlobal.ventas.length + 1).toString().padStart(4, '0');
+        return `NE${letra}${consec}_${dd}${mm}${String(yy).slice(-2)}`;
+    };
+
+    const prepararVentaOriginal = window.prepararVenta;
+    window.prepararVenta = async function () {
+        // El selector debe existir ANTES de prepararVentaOriginal para que el
+        // administrador pueda consultar la tasa de la fecha elegida.
+        asegurarSelectorFecha();
+        const campo = document.getElementById('v_fecha_facturacion');
+        if (campo && !campo.value) campo.value = fechaHoyLocal();
+        return prepararVentaOriginal.apply(this, arguments);
+    };
+
+    const procesarVentaOriginal = window.procesarVenta;
+    window.procesarVenta = async function () {
+        if (!document.getElementById('v_fecha_facturacion')) asegurarSelectorFecha();
+        const campo = document.getElementById('v_fecha_facturacion');
+        if (typeof esAdministrador === 'function' && esAdministrador()) {
+            if (!campo?.value) return alert('Selecciona la fecha a facturar.');
+        } else if (campo) {
+            campo.value = fechaHoyLocal();
+        }
+        return procesarVentaOriginal.apply(this, arguments);
+    };
+
+    function refrescarCuandoAbreVentas() {
+        if (document.getElementById('modulo-ventas') && !document.getElementById('modulo-ventas').classList.contains('d-none')) {
+            asegurarSelectorFecha();
+        }
+    }
+
+    const showModuleOriginal = window.showModule;
+    window.showModule = function () {
+        const r = showModuleOriginal.apply(this, arguments);
+        if (arguments[0] === 'ventas') setTimeout(refrescarCuandoAbreVentas, 0);
+        return r;
+    };
+
+    window.addEventListener('load', () => setTimeout(refrescarCuandoAbreVentas, 0));
+})();
