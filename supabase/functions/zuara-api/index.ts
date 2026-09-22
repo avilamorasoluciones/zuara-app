@@ -215,6 +215,7 @@ export default {
         'POST /api/ventas':'registrar_venta',
         'POST /api/devoluciones':'registrar_devolucion',
         'POST /api/configuracion':'guardar_configuracion',
+        'POST /api/tasas':'registrar_tasa',
         'POST /api/tasas/upload':'upload_tasas'
       };
 
