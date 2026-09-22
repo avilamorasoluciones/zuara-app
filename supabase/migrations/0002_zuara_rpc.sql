@@ -169,7 +169,7 @@ begin
       return jsonb_build_object('error','No es posible realizar esta operación.','status_code',403);
     end if;
 
-    producto_id := (p_payload->>'producto_id')::bigint;
+    v_producto_id := (p_payload->>'producto_id')::bigint;
     movimiento_id := nullif(p_payload->>'movimiento_id','')::bigint;
     precio_actual := case when nullif(p_payload->>'precio_usd','') is null then null else (p_payload->>'precio_usd')::numeric end;
 
@@ -382,7 +382,7 @@ begin
           - coalesce(sum(case when almacen_origen_id in (9998,9999) then cantidad else 0 end),0)
         )
       into saldo_eur
-      from movimientos where movimientos.producto_id=producto_id;
+      from movimientos where movimientos.producto_id=v_producto_id;
 
       if cantidad > coalesce(saldo_eur,0) then
         return jsonb_build_object('error','No hay existencias suficientes para completar la venta.','status_code',400);
@@ -459,6 +459,7 @@ begin
 
     select coalesce(max(id),0)+1 into mov_num from movimientos;
     for item in select * from jsonb_array_elements(p_payload->'detalles') loop
+      v_producto_id := (item->>'producto_id')::bigint;
       insert into movimientos(
         consecutivo,fecha_registro,tipo,producto_id,cantidad,costo_unitario,documento,registrado_por
       ) values (
