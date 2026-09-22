@@ -866,6 +866,19 @@ def api_crud(tabla, request, id=None):
                     return jsonify({'error': 'La fecha de la tasa no es válida. Selecciona una fecha real en formato DD/MM/AAAA.'}), 400
                 binance = safe_float(d.get('binance'))
                 euro = safe_float(d.get('euro_bcv'))
+
+                # Protección de segunda capa contra duplicados exactos.
+                # Se permite registrar varias tasas el mismo día cuando los
+                # valores cambian, pero no repetir exactamente Binance + Euro.
+                duplicada = conn.execute(
+                    "SELECT id FROM historico_tasas WHERE fecha = ? AND binance = ? AND euro_bcv = ? LIMIT 1",
+                    (fecha_tasa, binance, euro)
+                ).fetchone()
+                if duplicada:
+                    return jsonify({
+                        'error': 'Ya existe una tasa con la misma fecha, Binance P2P y Euro BCV. No se registró un duplicado.'
+                    }), 409
+
                 brecha = (binance / euro) - 1 if euro > 0 else 0
                 conn.execute('''INSERT INTO historico_tasas (fecha, hora, dolar_bcv, binance, bybit, dolar_promedio, euro_bcv, zelle, paypal, brecha, registrado_por) VALUES (?,?,?,?,?,?,?,?,?,?,?)''',
                               (fecha_tasa, d['hora'], safe_float(d.get('dolar_bcv')), binance, safe_float(d.get('bybit')), safe_float(d.get('dolar_promedio')), euro, safe_float(d.get('zelle')), safe_float(d.get('paypal')), brecha, usuario_actual))
