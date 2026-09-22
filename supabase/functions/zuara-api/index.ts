@@ -1,0 +1,264 @@
+import { withSupabase } from 'npm:@supabase/server@^1';
+import { createClient } from 'npm:@supabase/supabase-js@2';
+import { scryptSync, randomBytes } from 'node:crypto';
+
+function json(data: unknown, status = 200) {
+  return Response.json(data, {
+    status,
+    headers: { 'Content-Type': 'application/json; charset=utf-8' }
+  });
+}
+
+function syntheticEmail(usuario: string) {
+  const bytes = new TextEncoder().encode(usuario);
+  let binary = '';
+  for (const b of bytes) binary += String.fromCharCode(b);
+  const encoded = btoa(binary).replace(/=+$/,'').replace(/\+/g,'-').replace(/\//g,'_');
+  return `${encoded}@auth.zuara.app`.toLowerCase();
+}
+
+function werkzeugScryptHash(password: string) {
+  const salt = randomBytes(16).toString('base64url');
+  const derived = scryptSync(password, salt, 64, {
+    N: 32768, r: 8, p: 1, maxmem: 132 * 32768 * 8
+  });
+  return `scrypt:32768:8:1$${salt}$${Buffer.from(derived).toString('hex')}`;
+}
+
+function nowCaracas() {
+  return new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'America/Caracas',
+    dateStyle: 'short',
+    timeStyle: 'medium'
+  }).format(new Date()).replace(',', '');
+}
+
+const TABLES = new Set([
+  'clientes','proveedores','almacenes','categorias','productos',
+  'historico_tasas','historico_coberturas','notas_credito','ventas'
+]);
+
+const PERMISO_TABLA: Record<string,string> = {
+  clientes:'clientes', proveedores:'proveedores', almacenes:'almacenes',
+  categorias:'categorias', productos:'productos',
+  historico_tasas:'parametros', historico_coberturas:'parametros',
+  notas_credito:'historial_ventas', ventas:'ventas'
+};
+
+function tienePermiso(user: any, permiso: string) {
+  if (user?.es_admin) return true;
+  try {
+    const p = typeof user.permisos === 'string' ? JSON.parse(user.permisos || '[]') : (user.permisos || []);
+    return Array.isArray(p) && (p.includes(permiso) || (permiso === 'agregar_tasa' && p.includes('parametros')));
+  } catch (_) { return false; }
+}
+
+export default {
+  fetch: withSupabase({ auth: 'user' }, async (req, ctx) => {
+    try {
+      const input = await req.json();
+      const path = String(input?.path || '');
+      const method = String(input?.method || 'GET').toUpperCase();
+      const body = input?.body ?? {};
+      const pathname = path.split('?')[0];
+
+      const { data: appUser, error: userError } = await ctx.supabaseAdmin
+        .from('usuarios')
+        .select('id,nombre,usuario,activo,es_admin,permisos,protegido,auth_user_id')
+        .eq('auth_user_id', ctx.userClaims?.id)
+        .maybeSingle();
+
+      if (userError) throw userError;
+      if (!appUser || !appUser.activo) return json({ error: 'Sesión no válida.' }, 401);
+
+      // Operaciones críticas: una sola transacción PostgreSQL.
+      const mutationMap: Record<string,string> = {
+        'POST /api/movimientos':'registrar_movimiento',
+        'POST /api/ventas':'registrar_venta',
+        'POST /api/devoluciones':'registrar_devolucion',
+        'POST /api/configuracion':'guardar_configuracion',
+        'POST /api/tasas/upload':'upload_tasas'
+      };
+
+      let action = mutationMap[`${method} ${pathname}`];
+      if (pathname.startsWith('/api/existencias/') && method === 'POST') action = 'corregir_existencia';
+
+      if (action) {
+        const { data, error } = await ctx.supabase.rpc('zuara_mutate', {
+          p_action: action,
+          p_payload: body
+        });
+        if (error) return json({ error: error.message }, 400);
+        if (data?.status_code) return json({ error: data.error }, Number(data.status_code));
+        if (data?.error) return json({ error: data.error }, Number(data.status_code || 400));
+        return json(data || { status:'ok' });
+      }
+
+      // Borrado de ventas conserva la lógica de la versión Flask: elimina
+      // movimientos y detalle asociados al consecutivo, dentro de la misma RPC.
+      const ventaDelete = pathname.match(/^\/api\/ventas\/(\d+)$/);
+      if (ventaDelete && method === 'DELETE') {
+        const { data: venta, error: ve } = await ctx.supabaseAdmin
+          .from('ventas').select('consecutivo').eq('id', Number(ventaDelete[1])).maybeSingle();
+        if (ve) throw ve;
+        if (!venta) return json({ error:'La venta indicada no existe.' },404);
+        const { data, error } = await ctx.supabase.rpc('zuara_mutate', {
+          p_action:'delete_venta', p_payload:{consecutivo:venta.consecutivo}
+        });
+        if (error) return json({error:error.message},400);
+        if (data?.error) return json({error:data.error},Number(data.status_code||400));
+        return json(data);
+      }
+
+      // Gestión de usuarios: Supabase Auth + tabla de negocio se actualizan juntas
+      // desde este entorno confiable; la clave secreta nunca llega al navegador.
+      if (pathname === '/api/usuarios' || pathname.startsWith('/api/usuarios/')) {
+        if (!tienePermiso(appUser,'usuarios')) return json({error:'No es posible realizar esta operación.'},403);
+        const idMatch = pathname.match(/^\/api\/usuarios\/(\d+)$/);
+        const id = idMatch ? Number(idMatch[1]) : null;
+
+        if (method === 'POST') {
+          const password = String(body?.contrasena || '');
+          const usuario = String(body?.usuario || '').trim();
+          if (!usuario || !password) return json({error:'Usuario y contraseña son obligatorios.'},400);
+          const email = syntheticEmail(usuario);
+          const {data:created,error:ce} = await ctx.supabaseAdmin.auth.admin.createUser({
+            email,password,email_confirm:true,user_metadata:{usuario,nombre:body?.nombre || ''}
+          });
+          if (ce) return json({error:ce.message},400);
+          const {error:ue} = await ctx.supabaseAdmin.from('usuarios').insert({
+            nombre:body?.nombre || '',usuario,contrasena:werkzeugScryptHash(password),
+            activo:body?.activo !== false,es_admin:Boolean(body?.es_admin),
+            permisos:JSON.stringify(body?.permisos || []),protegido:false,
+            fecha_registro:nowCaracas(),auth_user_id:created.user.id
+          });
+          if (ue) {
+            await ctx.supabaseAdmin.auth.admin.deleteUser(created.user.id);
+            return json({error:ue.message},400);
+          }
+          return json({status:'ok'});
+        }
+
+        if (!id) return json({error:'Usuario no encontrado.'},404);
+        const {data:target,error:te} = await ctx.supabaseAdmin.from('usuarios').select('*').eq('id',id).maybeSingle();
+        if (te) throw te;
+        if (!target) return json({error:'Usuario no encontrado.'},404);
+
+        if (method === 'PUT') {
+          const willAdmin = Boolean(body?.es_admin);
+          const willActive = body?.activo !== false;
+          if (target.es_admin && target.activo && (!willAdmin || !willActive)) {
+            const {count} = await ctx.supabaseAdmin.from('usuarios').select('id',{count:'exact',head:true}).eq('es_admin',true).eq('activo',true);
+            if ((count || 0) <= 1) return json({error:'Debe permanecer al menos un administrador activo en el sistema.'},400);
+          }
+
+          const nextUsuario = String(body?.usuario || target.usuario).trim();
+          const updates:any = {
+            nombre:body?.nombre ?? target.nombre, usuario:nextUsuario,
+            activo:willActive, es_admin:willAdmin,
+            permisos:JSON.stringify(body?.permisos || [])
+          };
+
+          const password = String(body?.contrasena || '');
+          if (password) {
+            updates.contrasena = werkzeugScryptHash(password);
+          }
+
+          if (target.auth_user_id) {
+            const authUpdates:any = {
+              email:syntheticEmail(nextUsuario),
+              email_confirm:true,
+              user_metadata:{usuario:nextUsuario,nombre:body?.nombre ?? target.nombre}
+            };
+            if (password) authUpdates.password = password;
+            const {error:ae} = await ctx.supabaseAdmin.auth.admin.updateUserById(target.auth_user_id,authUpdates);
+            if (ae) return json({error:ae.message},400);
+          } else if (password) {
+            const {data:created,error:ae} = await ctx.supabaseAdmin.auth.admin.createUser({
+              email:syntheticEmail(nextUsuario),password,email_confirm:true,
+              user_metadata:{usuario:nextUsuario,nombre:body?.nombre ?? target.nombre}
+            });
+            if (ae) return json({error:ae.message},400);
+            updates.auth_user_id=created.user.id;
+          }
+
+          const {error:ue} = await ctx.supabaseAdmin.from('usuarios').update(updates).eq('id',id);
+          if (ue) return json({error:ue.message},400);
+          return json({status:'ok'});
+        }
+
+        if (method === 'DELETE') {
+          if (target.protegido) return json({status:'ok'});
+          if (target.es_admin && target.activo) {
+            const {count} = await ctx.supabaseAdmin.from('usuarios').select('id',{count:'exact',head:true}).eq('es_admin',true).eq('activo',true);
+            if ((count || 0) <= 1) return json({error:'No se puede eliminar el último administrador activo.'},400);
+          }
+          const {error:de} = await ctx.supabaseAdmin.from('usuarios').delete().eq('id',id);
+          if (de) return json({error:de.message},400);
+          if (target.auth_user_id) await ctx.supabaseAdmin.auth.admin.deleteUser(target.auth_user_id);
+          return json({status:'ok'});
+        }
+      }
+
+      // CRUD simple: clientes, proveedores, almacenes, categorías y productos.
+      const m = pathname.match(/^\/api\/([a-z_]+)(?:\/(\d+))?$/);
+      if (m) {
+        const legacy = m[1];
+        const id = m[2] ? Number(m[2]) : null;
+        const tabla = legacy === 'tasas' ? 'historico_tasas' : legacy === 'coberturas' ? 'historico_coberturas' : legacy;
+        if (!TABLES.has(tabla)) return json({error:'Tabla no permitida'},403);
+
+        const permiso = PERMISO_TABLA[tabla];
+        if (method !== 'GET' && permiso && !tienePermiso(appUser,permiso)) {
+          return json({error:'No es posible realizar esta operación.'},403);
+        }
+        if (method === 'GET' && permiso && !tienePermiso(appUser,permiso)) {
+          return json({error:'No es posible realizar esta operación.'},403);
+        }
+
+        if (method === 'GET') {
+          let q:any = ctx.supabase.from(tabla).select('*').order('id',{ascending:false});
+          if (tabla==='historico_tasas') q=q.order('fecha',{ascending:false}).order('hora',{ascending:false});
+          if (id) q=q.eq('id',id);
+          const {data,error}=await q;
+          if(error) throw error;
+          return json(id ? (data?.[0] || null) : (data || []));
+        }
+
+        if (method === 'POST') {
+          const payload:any = {...body};
+          delete payload.id;
+          payload.fecha_registro = nowCaracas();
+          payload.registrado_por = appUser.nombre || appUser.usuario;
+          if (tabla==='historico_tasas') {
+            payload.brecha = Number(payload.euro_bcv)>0 ? Number(payload.binance||0)/Number(payload.euro_bcv)-1 : 0;
+          }
+          const {error}=await ctx.supabase.from(tabla).insert(payload);
+          if(error) throw error;
+          return json({status:'ok'});
+        }
+
+        if (method === 'PUT' && id) {
+          const payload:any = {...body}; delete payload.id;
+          if (tabla==='historico_tasas') {
+            payload.brecha = Number(payload.euro_bcv)>0 ? Number(payload.binance||0)/Number(payload.euro_bcv)-1 : 0;
+          }
+          const {error}=await ctx.supabase.from(tabla).update(payload).eq('id',id);
+          if(error) throw error;
+          return json({status:'ok'});
+        }
+
+        if (method === 'DELETE' && id) {
+          const {error}=await ctx.supabase.from(tabla).delete().eq('id',id);
+          if(error) throw error;
+          return json({status:'ok'});
+        }
+      }
+
+      return json({error:'Ruta no implementada en el adaptador Supabase.'},404);
+    } catch (error) {
+      console.error('ZUARA API error', error);
+      return json({error:error instanceof Error ? error.message : 'Error interno.'},500);
+    }
+  })
+};
