@@ -346,6 +346,17 @@
       let detail=null; try{detail=error.context?await error.context.json():null;}catch(_){}
       return responseJSON(detail || {error:normalizarError(error)}, error.status || 500);
     }
+
+    // La Edge Function devuelve la sesión creada. El cliente del navegador debe
+    // instalarla explícitamente para que las siguientes peticiones lleven el JWT.
+    if (data?.session?.access_token && data?.session?.refresh_token) {
+      const { error: sessionError } = await supabaseClient.auth.setSession({
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token
+      });
+      if (sessionError) return responseJSON({error:sessionError.message}, 401);
+    }
+
     return responseJSON(data || {});
   }
 
