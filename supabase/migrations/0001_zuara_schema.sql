@@ -271,9 +271,9 @@ begin
 
   select
     case
-      when coalesce(u.permisos,'') ~ '^\\s*\\['
-        then u.permisos::jsonb
-      else '{}'::jsonb
+      when trim(coalesce(u.permisos,'')) like '[%'
+        then trim(u.permisos)::jsonb
+      else '[]'::jsonb
     end
   into v_permisos
   from public.usuarios u
