@@ -122,16 +122,16 @@ export default {
         return json({ error: signError?.message || 'No se pudo iniciar la sesión.' }, 401);
       }
 
+      let permisos: any = [];
+      try { permisos = typeof row.permisos === 'string' ? JSON.parse(row.permisos || '[]') : (row.permisos || []); } catch (_) {}
       return json({
+        id: row.id,
+        nombre: row.nombre,
+        usuario: row.usuario,
+        es_admin: Boolean(row.es_admin),
+        permisos,
         autenticado: true,
-        session: signed.session,
-        user: {
-          id: row.id,
-          nombre: row.nombre,
-          usuario: row.usuario,
-          es_admin: Boolean(row.es_admin),
-          permisos: row.permisos || '[]'
-        }
+        session: signed.session
       });
     } catch (error) {
       console.error('ZUARA login error', error);
