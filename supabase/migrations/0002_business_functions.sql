@@ -490,9 +490,9 @@ returns table(
   stock_bloqueado double precision,stock_disponible_venta double precision,total_costo double precision
 )
 language sql
-security invoker
+security definer
 set search_path = ''
-as $$
+as $
   select
     p.id,p.codigo_barras,p.descripcion,p.stock_minimo,p.unidad_medida,p.estado,
     coalesce(sum(case
