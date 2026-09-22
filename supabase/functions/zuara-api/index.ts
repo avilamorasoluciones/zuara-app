@@ -72,6 +72,38 @@ export default {
       if (userError) throw userError;
       if (!appUser || !appUser.activo) return json({ error: 'Sesión no válida.' }, 401);
 
+      if (method === 'GET' && pathname === '/api/kardex') {
+        if (!tienePermiso(appUser,'kardex')) return json({error:'No es posible realizar esta operación.'},403);
+        const {data,error}=await ctx.supabaseAdmin
+          .from('movimientos')
+          .select('*,productos(descripcion),almacen_origen:almacenes!movimientos_almacen_origen_id_fkey(nombre),almacen_destino:almacenes!movimientos_almacen_destino_id_fkey(nombre)')
+          .order('id',{ascending:false});
+        if(error) {
+          // El esquema conserva las columnas históricas sin FK; hacemos la
+          // misma consulta con datos de almacenes cuando no existe la relación.
+          const {data:movs,error:me}=await ctx.supabaseAdmin.from('movimientos').select('*').order('id',{ascending:false});
+          if(me) throw me;
+          const ids=[...new Set((movs||[]).map((m:any)=>m.producto_id).filter(Boolean))];
+          const aids=[...new Set((movs||[]).flatMap((m:any)=>[m.almacen_origen_id,m.almacen_destino_id]).filter(Boolean))];
+          const [{data:prods},{data:alms}]=await Promise.all([
+            ctx.supabaseAdmin.from('productos').select('id,descripcion').in('id',ids.length?ids:[-1]),
+            ctx.supabaseAdmin.from('almacenes').select('id,nombre').in('id',aids.length?aids:[-1])
+          ]);
+          const pm=new Map((prods||[]).map((p:any)=>[p.id,p.descripcion]));
+          const am=new Map((alms||[]).map((a:any)=>[a.id,a.nombre]));
+          return json((movs||[]).map((m:any)=>({...m,
+            producto_nombre:pm.get(m.producto_id)||'Producto Eliminado',
+            almacen_origen_nombre:am.get(m.almacen_origen_id)||null,
+            almacen_destino_nombre:am.get(m.almacen_destino_id)||null
+          })));
+        }
+        return json((data||[]).map((m:any)=>({...m,
+          producto_nombre:m.productos?.descripcion||'Producto Eliminado',
+          almacen_origen_nombre:m.almacen_origen?.nombre||null,
+          almacen_destino_nombre:m.almacen_destino?.nombre||null
+        })));
+      }
+
       if (method === 'GET' && pathname === '/api/auth/sesion') {
         return json({
           autenticado:true,
