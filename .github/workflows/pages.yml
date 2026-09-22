@@ -34,12 +34,17 @@ jobs:
         uses: actions/configure-pages@v5
 
       - name: Build static site
-        run: cp templates/index.html index.html
+        run: |
+          rm -rf _site
+          mkdir -p _site
+          cp templates/index.html _site/index.html
+          cp -R static _site/static
+          if [ -d assets ]; then cp -R assets _site/assets; fi
 
       - name: Upload static site
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
-          path: "."
+          path: "_site"
 
       - name: Deploy to GitHub Pages
         id: deployment
