@@ -15,8 +15,8 @@ Ejecutar primero 0001_zuara_schema.sql y 0002_business_functions.sql.
 """
 
 import os
-import psycopg
-from psycopg.rows import dict_row
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 TABLE_ORDER = [
     "clientes",
@@ -110,7 +110,7 @@ def copy_table(src, dst, table):
     '''
 
     copied = 0
-    with src.cursor(row_factory=dict_row) as scur, dst.cursor() as dcur:
+    with src.cursor(cursor_factory=RealDictCursor) as scur, dst.cursor() as dcur:
         scur.execute(f'select {col_sql} from public."{table}"')
         while True:
             rows = scur.fetchmany(BATCH_SIZE)
