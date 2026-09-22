@@ -113,6 +113,10 @@
     const u = url || new URL(path, window.location.origin);
     const pathname = u.pathname;
 
+    if (pathname === '/api/auth/sesion' || pathname === '/api/resumen') {
+      return invokeApi(pathname, 'GET', null, Object.fromEntries(u.searchParams.entries()));
+    }
+
     if (pathname === '/api/auth/sesion') {
       const { data: { user } } = await supabaseClient.auth.getUser();
       if (!user) return responseJSON({ autenticado: false }, 401);
