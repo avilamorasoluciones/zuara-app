@@ -85,7 +85,7 @@ declare
   v record;
   t record;
   item jsonb;
-  producto_id bigint;
+  v_producto_id bigint;
   cantidad numeric;
   total_eur numeric;
   total_bs numeric;
@@ -179,7 +179,7 @@ begin
 
     if movimiento_id is not null then
       select * into carga from movimientos
-      where id=movimiento_id and producto_id=producto_id
+      where id=movimiento_id and movimientos.producto_id=v_producto_id
         and tipo in ('Inventario Inicial','Compra')
       for update;
 
@@ -205,7 +205,7 @@ begin
           when tipo in ('Inventario Inicial','Compra','Devolución por venta','Ajuste administrativo - Entrada') then cantidad
           when tipo in ('Venta','Descarga por daño/motivo','Devolución por compra','Ajuste administrativo - Salida') then -cantidad
           else 0 end),0)
-        into total_eur from movimientos where producto_id=producto_id;
+        into total_eur from movimientos where movimientos.producto_id=v_producto_id;
         if abs(delta) > total_eur + 0.000000001 then
           return jsonb_build_object(
             'error','La corrección dejaría el stock físico en negativo.',
@@ -226,7 +226,7 @@ begin
           ajuste_consec,
           to_char(now() at time zone 'America/Caracas','YYYY-MM-DD HH24:MI:SS'),
           case when delta>=0 then 'Ajuste administrativo - Entrada' else 'Ajuste administrativo - Salida' end,
-          producto_id,abs(delta),nuevo_costo,
+          v_producto_id,abs(delta),nuevo_costo,
           case when delta<0 then carga.almacen_destino_id else null end,
           case when delta>=0 then carga.almacen_destino_id else null end,
           'Corrección administrativa de carga '||carga.consecutivo||': cantidad '||
@@ -242,7 +242,7 @@ begin
     end if;
 
     if precio_actual is not null then
-      update productos set precio_usd=precio_actual where id=producto_id;
+      update productos set precio_usd=precio_actual where id=v_producto_id;
     end if;
 
     return jsonb_build_object('status','ok','ajuste',ajuste_consec,'delta_cantidad',coalesce(delta,0));
@@ -367,9 +367,9 @@ begin
 
     -- Validar stock acumulando las cantidades del carrito por producto.
     for item in select * from jsonb_array_elements(p_payload->'detalles') loop
-      producto_id := (item->>'producto_id')::bigint;
+      v_producto_id := (item->>'producto_id')::bigint;
       cantidad := coalesce((item->>'cantidad')::numeric,0);
-      if producto_id is null or cantidad<=0 then
+      if v_producto_id is null or cantidad<=0 then
         return jsonb_build_object('error','Cada detalle de venta debe tener un producto y una cantidad mayor a cero.','status_code',400);
       end if;
 
@@ -464,7 +464,7 @@ begin
       ) values (
         'MOV-'||lpad(mov_num::text,5,'0'),
         fecha_fact||' '||split_part(ahora,' ',2),
-        'Venta',(item->>'producto_id')::bigint,
+        'Venta',v_producto_id,
         (item->>'cantidad')::numeric,
         coalesce((item->>'precio_eur')::numeric,0),
         consec,u.nombre
@@ -475,7 +475,7 @@ begin
         subtotal_euro_snapshot,total_euro_snapshot,precio_unitario_bs_snapshot,
         subtotal_bs_snapshot,total_bs_snapshot
       ) values (
-        consec,(item->>'producto_id')::bigint,(item->>'cantidad')::numeric,
+        consec,v_producto_id,(item->>'cantidad')::numeric,
         coalesce((item->>'descuento')::numeric,0),
         coalesce((item->>'precio_eur')::numeric,0),
         coalesce((item->>'sub_eur')::numeric,0),
@@ -508,19 +508,19 @@ begin
 
     -- Primero acumulamos por producto para impedir devolver más de lo vendido.
     for item in select * from jsonb_array_elements(p_payload->'detalles') loop
-      producto_id := (item->>'producto_id')::bigint;
+      v_producto_id := (item->>'producto_id')::bigint;
       cantidad := coalesce((item->>'cantidad_devolver')::numeric,0);
-      if producto_id is null or cantidad<=0 then continue; end if;
+      if v_producto_id is null or cantidad<=0 then continue; end if;
 
       select coalesce(sum(cantidad),0),coalesce(max(precio_unitario_euro_snapshot),0),coalesce(max(precio_unitario_bs_snapshot),0)
         into saldo_eur,tasa_eur,tasa_bin
       from detalle_nota_entrega
-      where consecutivo=consec and producto_id=producto_id;
+      where consecutivo=consec and detalle_nota_entrega.producto_id=v_producto_id;
 
       select coalesce(sum(d.cantidad),0) into total_bs
       from detalle_nota_credito d
       join notas_credito n on n.consecutivo=d.consecutivo_nc
-      where n.consecutivo_origen=consec and d.producto_id=producto_id;
+      where n.consecutivo_origen=consec and d.producto_id=v_producto_id;
 
       if cantidad > coalesce(saldo_eur,0)-coalesce(total_bs,0)+0.0001 then
         return jsonb_build_object('error','La cantidad solicitada supera la cantidad disponible para devolución.','status_code',400);
@@ -535,12 +535,12 @@ begin
     total_eur := 0;
     total_bs := 0;
     for item in select * from jsonb_array_elements(p_payload->'detalles') loop
-      producto_id := (item->>'producto_id')::bigint;
+      v_producto_id := (item->>'producto_id')::bigint;
       cantidad := coalesce((item->>'cantidad_devolver')::numeric,0);
-      if producto_id is null or cantidad<=0 then continue; end if;
+      if v_producto_id is null or cantidad<=0 then continue; end if;
       select coalesce(max(precio_unitario_euro_snapshot),0),coalesce(max(precio_unitario_bs_snapshot),0)
         into tasa_eur,tasa_bin
-      from detalle_nota_entrega where consecutivo=coalesce(p_payload->>'consecutivo_origen','') and producto_id=producto_id;
+      from detalle_nota_entrega where consecutivo=coalesce(p_payload->>'consecutivo_origen','') and detalle_nota_entrega.producto_id=v_producto_id;
       total_eur := total_eur + cantidad*tasa_eur;
       total_bs := total_bs + cantidad*tasa_bin;
     end loop;
@@ -550,12 +550,12 @@ begin
 
     select coalesce(max(id),0)+1 into mov_num from movimientos;
     for item in select * from jsonb_array_elements(p_payload->'detalles') loop
-      producto_id := (item->>'producto_id')::bigint;
+      v_producto_id := (item->>'producto_id')::bigint;
       cantidad := coalesce((item->>'cantidad_devolver')::numeric,0);
-      if producto_id is null or cantidad<=0 then continue; end if;
+      if v_producto_id is null or cantidad<=0 then continue; end if;
       select coalesce(max(precio_unitario_euro_snapshot),0),coalesce(max(precio_unitario_bs_snapshot),0)
         into tasa_eur,tasa_bin
-      from detalle_nota_entrega where consecutivo=coalesce(p_payload->>'consecutivo_origen','') and producto_id=producto_id;
+      from detalle_nota_entrega where consecutivo=coalesce(p_payload->>'consecutivo_origen','') and detalle_nota_entrega.producto_id=v_producto_id;
 
       insert into movimientos(consecutivo,fecha_registro,tipo,producto_id,cantidad,costo_unitario,almacen_destino_id,documento,registrado_por,motivo)
       values(
