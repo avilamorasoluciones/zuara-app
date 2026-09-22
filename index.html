@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title id="app-title">ZUARA APP</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="static/style.css">
+         
+    <!-- Librerías para PDF y Excel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        :root { --app-font-size: 14px; }
+        body { font-size: var(--app-font-size); transition: font-size 0.2s ease; }
+        .nota-entrega-header { border-bottom: 2px solid #eaeaea; padding-bottom: 15px; margin-bottom: 20px; }
+        .table-nota th { background-color: var(--theme-light) !important; color: var(--theme-color-1); font-size: 0.8em; text-align: center; vertical-align: middle; border-bottom: 2px solid var(--theme-color-1); }
+        .table-nota td { vertical-align: middle; font-size: 0.9em; border-color: #f1f1f1; }
+        .input-nota { border: 1px solid #eee; background: #fafafa; border-radius: 8px; padding: 6px 10px; width: 100%; outline: none; transition: 0.3s; font-size: 0.9em; }
+        .input-nota:focus { border-color: var(--theme-color-1); background: #fff; box-shadow: 0 0 0 3px var(--theme-light); }
+        .tasa-badge { padding: 4px 10px; font-size: 0.85em; }
+        .reloj-compacto { padding: 4px 10px !important; font-size: 0.85em !important; }
+        #contenido-pdf-nota, #contenido-pdf-nc { background: white; color: black; font-family: 'Arial', sans-serif; font-size: 12px;}
+        .session-chip { max-width: 230px; }
+        .session-chip-name { max-width: 125px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .permission-switch { min-height: 58px; border: 1px solid #ececf0; border-radius: 16px; background: #fafafa; padding: 12px 14px 12px 46px; }
+        .permission-switch .form-check-input { margin-left: -32px; margin-top: 2px; cursor: pointer; }
+        .permission-switch .form-check-label { cursor: pointer; display: block; }
+        .permission-switch:hover { border-color: var(--theme-color-1); background: var(--theme-light); }
+        .login-illustration { width: 74px; height: 74px; border-radius: 24px; display: inline-flex; align-items: center; justify-content: center; }
+        .summary-card[role="button"]:focus { outline: 4px solid var(--theme-light); }
+    </style>
+</head>
+<body id="app-body" class="app-loading">
+<div class="d-flex" id="wrapper">
+    <div class="sidebar theme-bg" id="sidebar-wrapper">
+        <div class="sidebar-heading text-center py-4 fs-4 fw-bold animate-zoom-in text-white">
+            <div class="logo-container mx-auto mb-2 bg-white bounce-hover"><i class="fa-solid fa-cube fs-3 icono-giratorio text-theme-solid"></i></div>
+            <span id="brand-name">ZUARA APP</span>
+        </div>
+        <div class="list-group list-group-flush mt-2 ps-2 pb-4">
+            <a href="#" class="list-group-item list-group-item-action nav-link active" data-permiso="panel" data-modulo="panel" onclick="showModule('panel')"><span class="icon-bubble sidebar-bubble"><i class="fa-solid fa-house"></i></span> Panel Principal</a>
+
+            <p class="small fw-bold ms-3 mt-4 mb-2 text-uppercase letter-spacing sidebar-subtitle" data-permiso-grupo="facturacion">Facturación</p>
+            <a href="#" class="list-group-item list-group-item-action nav-link" data-permiso="ventas" data-modulo="ventas" onclick="prepararVenta()"><span class="icon-bubble sidebar-bubble"><i class="fa-solid fa-file-invoice"></i></span> Nota de Entrega</a>
+            <a href="#" class="list-group-item list-group-item-action nav-link" data-permiso="historial_ventas" data-modulo="historial_ventas" onclick="showModule('historial_ventas')"><span class="icon-bubble sidebar-bubble"><i class="fa-solid fa-receipt"></i></span> Historial Notas</a>
+
+            <p class="small fw-bold ms-3 mt-4 mb-2 text-uppercase letter-spacing sidebar-subtitle" data-permiso-grupo="contactos">Contactos</p>
+            <a href="#" class="list-group-item list-group-item-action nav-link" data-permiso="clientes" data-modulo="clientes" onclick="showModule('clientes')"><span class="icon-bubble sidebar-bubble"><i class="fa-solid fa-users"></i></span> Clientes</a>
+            <a href="#" class="list-group-item list-group-item-action nav-link" data-permiso="proveedores" data-modulo="proveedores" onclick="showModule('proveedores')"><span class="icon-bubble sidebar-bubble"><i class="fa-solid fa-handshake"></i></span> Proveedores</a>
+
+            <p class="small fw-bold ms-3 mt-4 mb-2 text-uppercase letter-spacing sidebar-subtitle" data-permiso-grupo="inventario">Inventario</p>
+            <a href="#" class="list-group-item list-group-item-action nav-link" data-permiso="almacenes" data-modulo="almacenes" onclick="showModule('almacenes')"><span class="icon-bubble sidebar-bubble"><i class="fa-solid fa-warehouse"></i></span> Almacenes</a>
+            <a href="#" class="list-group-item list-group-item-action nav-link" data-permiso="categorias" data-modulo="categorias" onclick="showModule('categorias')"><span class="icon-bubble sidebar-bubble"><i class="fa-solid fa-tags"></i></span> Categorías</a>
+            <a href="#" class="list-group-item list-group-item-action nav-link" data-permiso="productos" data-modulo="productos" onclick="showModule('productos')"><span class="icon-bubble sidebar-bubble"><i class="fa-solid fa-box-open"></i></span> Productos</a>
+            <a href="#" class="list-group-item list-group-item-action nav-link" data-permiso="existencias" data-modulo="existencias" onclick="showModule('existencias')"><span class="icon-bubble sidebar-bubble"><i class="fa-solid fa-cubes"></i></span> Existencias</a>
+            <a href="#" class="list-group-item list-group-item-action nav-link" data-permiso="movimientos" data-modulo="movimientos" onclick="abrirModalMovimiento()"><span class="icon-bubble sidebar-bubble"><i class="fa-solid fa-arrow-right-arrow-left"></i></span> + Nuevo Movimiento</a>
+            <a href="#" class="list-group-item list-group-item-action nav-link" data-permiso="kardex" data-modulo="kardex" onclick="showModule('kardex')"><span class="icon-bubble sidebar-bubble"><i class="fa-solid fa-clipboard-list"></i></span> Kardex</a>
+
+            <p class="small fw-bold ms-3 mt-4 mb-2 text-uppercase letter-spacing sidebar-subtitle" data-permiso-grupo="sistema">Sistema</p>
+            <a href="#" class="list-group-item list-group-item-action nav-link" data-permiso="parametros" data-modulo="parametros" onclick="showModule('parametros')"><span class="icon-bubble sidebar-bubble"><i class="fa-solid fa-chart-line"></i></span> Parámetros (Tasas)</a>
+            <a href="#" class="list-group-item list-group-item-action nav-link" data-permiso="lista_precios" data-modulo="lista_precios" onclick="showModule('lista_precios')"><span class="icon-bubble sidebar-bubble"><i class="fa-solid fa-list-ol"></i></span> Lista de Precios</a>
+            <a href="#" class="list-group-item list-group-item-action nav-link" data-permiso="reportes" data-modulo="reportes" onclick="showModule('reportes')"><span class="icon-bubble sidebar-bubble"><i class="fa-solid fa-file-pdf"></i></span> Reportes</a>
+            <a href="#" class="list-group-item list-group-item-action nav-link" data-permiso="usuarios" data-modulo="usuarios" onclick="showModule('usuarios')"><span class="icon-bubble sidebar-bubble"><i class="fa-solid fa-user-gear"></i></span> Usuarios</a>
+            <a href="#" class="list-group-item list-group-item-action nav-link" data-permiso="configuracion" data-modulo="configuracion" onclick="showModule('configuracion')"><span class="icon-bubble sidebar-bubble"><i class="fa-solid fa-gear"></i></span> Configuración</a>
+        </div>
+    </div>
+    <div id="page-content-wrapper">
+        <nav class="navbar navbar-expand-lg px-4 glass-navbar navbar-shadow">
+            <div class="container-fluid p-0 d-flex justify-content-between align-items-center">
+                <div class="d-flex align-items-center gap-2">
+                    <button class="btn btn-theme rounded-circle shadow-sm btn-menu-toggle bounce-hover p-2" id="menu-toggle" style="width: 35px; height: 35px; display:flex; align-items:center; justify-content:center;"><i class="fa-solid fa-bars"></i></button>
+                    <div class="tasas-container d-flex gap-2 fw-bold animate-fade d-none d-md-flex align-items-center">
+                        <span class="badge tasa-badge shadow-sm border" id="nav_tasa_status">Cargando...</span>
+                        <span class="badge tasa-badge shadow-sm bg-white text-dark border"><i class="fa-solid fa-euro-sign text-theme-solid me-1"></i> EUR (HOY): <span id="nav_tasa_eur">...</span></span>
+                        <span class="badge tasa-badge shadow-sm bg-white text-dark border"><i class="fa-brands fa-bitcoin text-theme-solid me-1"></i> BIN (HOY): <span id="nav_tasa_bin">...</span></span>
+                    </div>
+                </div>
+                <div class="d-flex align-items-center gap-2 animate-fade ms-auto">
+                    <span id="reloj-vivo" class="fw-bold rounded-pill shadow-sm bg-light text-dark d-none d-sm-inline border reloj-compacto">--:-- --</span>
+                    <button class="btn btn-light position-relative rounded-circle shadow-sm bounce-hover border p-2" style="width: 35px; height: 35px; display:flex; align-items:center; justify-content:center;" onclick="mostrarNotificaciones()"><i class="fa-solid fa-bell text-theme-solid"></i><span id="badge-notif" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger d-none" style="font-size: 0.6em;">0</span></button>
+                    <div class="dropdown">
+                        <button class="btn btn-theme rounded-pill px-3 py-1 fw-bold shadow-sm bounce-hover d-flex align-items-center gap-2 session-chip" type="button" id="menu-usuario" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fa-solid fa-circle-user"></i>
+                            <span class="session-chip-name" id="nav-nombre-usuario">Sin sesión</span>
+                            <i class="fa-solid fa-chevron-down small"></i>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end border-0 shadow-lg rounded-4 p-2 mt-2" aria-labelledby="menu-usuario">
+                            <li><span class="dropdown-item-text small text-muted fw-bold"><i class="fa-solid fa-shield-halved me-2 text-theme-solid"></i><span id="nav-rol-usuario">Sin sesión activa</span></span></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><button class="dropdown-item rounded-3 fw-bold text-danger" type="button" onclick="cerrarSesion()"><i class="fa-solid fa-right-from-bracket me-2"></i>Cerrar sesión</button></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </nav>
+                 
+        <div class="container-fluid p-4 main-container">
+            <div id="modulo-panel" class="modulo-vista active animate-fade-up">
+                <h2 class="fw-bold mb-4 titulo-modulo">Panel Principal</h2>
+                <div class="row g-4">
+                    <div class="col-12 col-md-6 col-lg-4" data-permiso="clientes"><div class="card ios-card border-0 p-4 h-100 summary-card" onclick="showModule('clientes')"><div class="d-flex justify-content-between align-items-center w-100"><div><h6 class="text-muted fw-bold mb-1 text-uppercase">Clientes</h6><h2 class="fw-bolder text-theme mb-0" id="count-clientes">0</h2></div><div class="icon-bubble card-bubble shadow-sm bounce-hover text-theme-solid"><i class="fa-solid fa-users fs-3"></i></div></div></div></div>
+                    <div class="col-12 col-md-6 col-lg-4" data-permiso="productos"><div class="card ios-card border-0 p-4 h-100 summary-card" onclick="showModule('productos')"><div class="d-flex justify-content-between align-items-center w-100"><div><h6 class="text-muted fw-bold mb-1 text-uppercase">Productos</h6><h2 class="fw-bolder text-theme mb-0" id="count-productos">0</h2></div><div class="icon-bubble card-bubble shadow-sm bounce-hover text-theme-solid"><i class="fa-solid fa-box-open fs-3"></i></div></div></div></div>
+                    <div class="col-12 col-md-6 col-lg-4" data-permiso="historial_ventas"><div class="card ios-card border-0 p-4 h-100 summary-card" onclick="showModule('historial_ventas')"><div class="d-flex justify-content-between align-items-center w-100"><div><h6 class="text-muted fw-bold mb-1 text-uppercase">Notas de Entrega</h6><h2 class="fw-bolder text-theme mb-0" id="count-ventas">0</h2></div><div class="icon-bubble card-bubble shadow-sm bounce-hover text-theme-solid"><i class="fa-solid fa-receipt fs-3"></i></div></div></div></div>
+                    <div class="col-12 col-md-6 col-lg-4" data-permiso="proveedores"><div class="card ios-card border-0 p-4 h-100 summary-card" onclick="showModule('proveedores')"><div class="d-flex justify-content-between align-items-center w-100"><div><h6 class="text-muted fw-bold mb-1 text-uppercase">Proveedores</h6><h2 class="fw-bolder text-theme mb-0" id="count-proveedores">0</h2></div><div class="icon-bubble card-bubble shadow-sm bounce-hover text-theme-solid"><i class="fa-solid fa-handshake fs-3"></i></div></div></div></div>
+                    <div class="col-12 col-md-6 col-lg-4" data-permiso="almacenes"><div class="card ios-card border-0 p-4 h-100 summary-card" onclick="showModule('almacenes')"><div class="d-flex justify-content-between align-items-center w-100"><div><h6 class="text-muted fw-bold mb-1 text-uppercase">Almacenes</h6><h2 class="fw-bolder text-theme mb-0" id="count-almacenes">0</h2></div><div class="icon-bubble card-bubble shadow-sm bounce-hover text-theme-solid"><i class="fa-solid fa-warehouse fs-3"></i></div></div></div></div>
+                    <div class="col-12 col-md-6 col-lg-4" data-permiso="categorias"><div class="card ios-card border-0 p-4 h-100 summary-card" onclick="showModule('categorias')"><div class="d-flex justify-content-between align-items-center w-100"><div><h6 class="text-muted fw-bold mb-1 text-uppercase">Categorías</h6><h2 class="fw-bolder text-theme mb-0" id="count-categorias">0</h2></div><div class="icon-bubble card-bubble shadow-sm bounce-hover text-theme-solid"><i class="fa-solid fa-tags fs-3"></i></div></div></div></div>
+                    <div class="col-12 col-md-6 col-lg-4" data-permiso="existencias"><div class="card ios-card border-0 p-4 h-100 summary-card" onclick="showModule('existencias')"><div class="d-flex justify-content-between align-items-center w-100"><div><h6 class="text-muted fw-bold mb-1 text-uppercase">Existencias</h6><h2 class="fw-bolder text-theme mb-0" id="count-existencias">0</h2></div><div class="icon-bubble card-bubble shadow-sm bounce-hover text-theme-solid"><i class="fa-solid fa-cubes fs-3"></i></div></div></div></div>
+                    <div class="col-12 col-md-6 col-lg-4" data-permiso="kardex"><div class="card ios-card border-0 p-4 h-100 summary-card" onclick="showModule('kardex')"><div class="d-flex justify-content-between align-items-center w-100"><div><h6 class="text-muted fw-bold mb-1 text-uppercase">Movimientos</h6><h2 class="fw-bolder text-theme mb-0" id="count-kardex">0</h2></div><div class="icon-bubble card-bubble shadow-sm bounce-hover text-theme-solid"><i class="fa-solid fa-clipboard-list fs-3"></i></div></div></div></div>
+                    <div class="col-12 col-md-6 col-lg-4" data-permiso="historial_ventas"><div class="card ios-card border-0 p-4 h-100 summary-card" onclick="showModule('historial_ventas')"><div class="d-flex justify-content-between align-items-center w-100"><div><h6 class="text-muted fw-bold mb-1 text-uppercase">Notas de Crédito</h6><h2 class="fw-bolder text-theme mb-0" id="count-notas_credito">0</h2></div><div class="icon-bubble card-bubble shadow-sm bounce-hover text-theme-solid"><i class="fa-solid fa-file-circle-minus fs-3"></i></div></div></div></div>
+                    <div class="col-12 col-md-6 col-lg-4" data-permiso="parametros"><div class="card ios-card border-0 p-4 h-100 summary-card" onclick="showModule('parametros')"><div class="d-flex justify-content-between align-items-center w-100"><div><h6 class="text-muted fw-bold mb-1 text-uppercase">Tasas cargadas</h6><h2 class="fw-bolder text-theme mb-0" id="count-tasas">0</h2></div><div class="icon-bubble card-bubble shadow-sm bounce-hover text-theme-solid"><i class="fa-solid fa-chart-line fs-3"></i></div></div></div></div>
+                    <div class="col-12 col-md-6 col-lg-4" data-permiso="agregar_tasa"><div class="card ios-card border-0 p-4 h-100 summary-card" onclick="abrirModal('tasas')"><div class="d-flex justify-content-between align-items-center w-100"><div><h6 class="text-muted fw-bold mb-1 text-uppercase">Tasas del día</h6><h4 class="fw-bolder text-theme mb-0">Agregar tasa</h4><small class="text-muted fw-bold">Registrar sin abrir parámetros</small></div><div class="icon-bubble card-bubble shadow-sm bounce-hover text-theme-solid"><i class="fa-solid fa-circle-plus fs-3"></i></div></div></div></div>
+                    <div class="col-12 col-md-6 col-lg-4" data-permiso="usuarios"><div class="card ios-card border-0 p-4 h-100 summary-card" onclick="showModule('usuarios')"><div class="d-flex justify-content-between align-items-center w-100"><div><h6 class="text-muted fw-bold mb-1 text-uppercase">Usuarios activos</h6><h2 class="fw-bolder text-theme mb-0" id="count-usuarios">0</h2></div><div class="icon-bubble card-bubble shadow-sm bounce-hover text-theme-solid"><i class="fa-solid fa-user-gear fs-3"></i></div></div></div></div>
+                </div>
+            </div>
+                         
+            <div id="vistas-dinamicas"></div>
+
+            <div id="modulo-ventas" class="modulo-vista d-none animate-fade-up">
+                <div class="row bg-theme-light p-3 rounded-4 border mb-4 text-center">
+                    <div class="col-md-3 border-end">
+                        <span class="small fw-bold text-muted">Tasa Binance (HOY)</span><br>
+                        <span class="fw-bolder fs-5 text-dark" id="top_tasa_bin">0.00</span>
+                    </div>
+                    <div class="col-md-3 border-end">
+                        <span class="small fw-bold text-muted">Tasa Euro BCV (HOY)</span><br>
+                        <span class="fw-bolder fs-5 text-dark" id="top_tasa_eur">0.00</span>
+                    </div>
+                    <div class="col-md-3 border-end">
+                        <span class="small fw-bold text-muted">% Brecha del Día</span><br>
+                        <span class="fw-bolder fs-5 text-dark" id="top_brecha_dia">0.00%</span>
+                    </div>
+                    <div class="col-md-3">
+                        <span class="small fw-bold text-muted">Semáforo de Cobertura</span><br>
+                        <span class="fw-bolder fs-6" id="top_semaforo_txt">Cargando...</span>
+                    </div>
+                </div>
+                <div class="card ios-card border-0 p-4 mb-4 shadow-sm">
+                    <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-end nota-entrega-header">
+                        <div class="mb-3 mb-md-0">
+                            <span class="fw-bold text-muted text-uppercase small letter-spacing">Nº de Entrega / Control</span><br>
+                            <input type="text" id="v_num_entrega" class="form-control form-control-lg fw-bolder text-theme-solid bg-transparent border-0 px-0 shadow-none" readonly>
+                        </div>
+                        <div class="text-md-end bg-theme-light p-3 rounded-4 border">
+                            <span class="fw-bold d-block text-theme-solid small text-uppercase"><i class="fa-solid fa-euro-sign"></i> TASA BCV EURO (HOY)</span>
+                            <h3 class="fw-bolder text-dark mb-0" id="v_tasa_print">0.00</h3>
+                        </div>
+                    </div>
+                    <div class="row g-4 mb-4">
+                        <div class="col-md-5">
+                            <h6 class="fw-bolder text-uppercase mb-3 text-theme-solid"><i class="fa-solid fa-user me-2"></i> Datos del Cliente (Requerido)</h6>
+                            <input type="text" id="v_cli_nom" class="input-nota mb-2 fw-bold" placeholder="Nombre / Razón Social *" list="lista_clientes" oninput="autoCompletarCliente(); verificarNotasCreditoCliente();" required>
+                            <datalist id="lista_clientes"></datalist>
+                            <input type="text" id="v_cli_doc" class="input-nota mb-2" placeholder="Identificación (Cédula/RIF)">
+                            <input type="text" id="v_cli_tel" class="input-nota mb-2" placeholder="Teléfono">
+                            <input type="email" id="v_cli_cor" class="input-nota mb-2" placeholder="Correo Electrónico">
+                            
+                            <select id="v_metodo_pago" class="input-nota mb-2 fw-bold mt-2 border-primary bg-light" onchange="toggleMetodoPago()">
+                                <option value="" disabled selected>Método de Pago...</option>
+                                <option value="Transferencia bancaria en bs">Transferencia bancaria en bs</option>
+                                <option value="Transferencia Binance">Transferencia Binance</option>
+                                <option value="Aplicar Nota de Crédito">Aplicar Nota de Crédito</option>
+                                <option value="Otro">Otro método de pago</option>
+                            </select>
+                            
+                            <!-- Contenedor dinámico Nota de Crédito -->
+                            <div id="contenedor_nc_pago" class="d-none mt-2 p-3 bg-light rounded-4 border">
+                                <label class="small fw-bold text-success mb-1">Seleccione Nota de Crédito a Favor:</label>
+                                <select id="v_select_nc" class="form-select form-select-sm fw-bold mb-2" onchange="calcularMontoNotaCredito()"></select>
+                                <div id="info_nc_saldo" class="small fw-bold text-muted">Saldo a favor: €0.00</div>
+                            </div>
+
+                            <input type="text" id="v_metodo_pago_otro" class="input-nota mb-2 d-none border-primary mt-2" placeholder="Especifique método de pago">
+                        </div>
+                        <div class="col-md-7">
+                            <h6 class="fw-bolder text-uppercase mb-3 text-theme-solid"><i class="fa-solid fa-truck-fast me-2"></i> Información para envíos</h6>
+                            <div class="row g-2 mb-2">
+                                <div class="col-4"><input type="text" id="v_env_pais" class="input-nota fw-bold text-muted" value="Venezuela" readonly title="País por defecto"></div>
+                                <div class="col-4">
+                                    <select id="v_env_est" class="input-nota fw-bold text-muted cursor-pointer">
+                                        <option value="" disabled selected>Estado...</option><option value="Amazonas">Amazonas</option><option value="Anzoátegui">Anzoátegui</option><option value="Apure">Apure</option><option value="Aragua">Aragua</option><option value="Barinas">Barinas</option><option value="Bolívar">Bolívar</option><option value="Carabobo">Carabobo</option><option value="Cojedes">Cojedes</option><option value="Delta Amacuro">Delta Amacuro</option><option value="Distrito Capital">Distrito Capital</option><option value="Falcón">Falcón</option><option value="Guárico">Guárico</option><option value="La Guaira">La Guaira</option><option value="Lara">Lara</option><option value="Mérida">Mérida</option><option value="Miranda">Miranda</option><option value="Monagas">Monagas</option><option value="Nueva Esparta">Nueva Esparta</option><option value="Portuguesa">Portuguesa</option><option value="Sucre">Sucre</option><option value="Táchira">Táchira</option><option value="Trujillo">Trujillo</option><option value="Yaracuy">Yaracuy</option><option value="Zulia">Zulia</option>
+                                    </select>
+                                </div>
+                                <div class="col-4"><input type="text" id="v_env_ciu" class="input-nota" placeholder="Ciudad/Municipio"></div>
+                            </div>
+                            <input type="text" id="v_env_dir" class="input-nota mb-2" placeholder="Dirección exacta de entrega">
+                            <input type="text" id="v_env_ref" class="input-nota mb-2" placeholder="Punto de referencia">
+                            <div class="row g-2">
+                                <div class="col-8"><input type="url" id="v_env_coo" class="input-nota" placeholder="Link de Google Maps (Coordenadas)"></div>
+                                <div class="col-4"><select id="v_env_tip" class="input-nota fw-bold cursor-pointer" onchange="actualizarNomenclatura()"><option value="Nacional" selected>Nacional</option><option value="Local">Local</option></select></div>
+                            </div>
+                        </div>
+                    </div>
+                    <h6 class="fw-bolder text-uppercase mb-3 text-theme-solid"><i class="fa-solid fa-cart-arrow-down me-2"></i> Detalles de la Nota (Carrito)</h6>
+                                         
+                    <div class="bg-light p-3 rounded-4 mb-3 border">
+                        <div class="row g-2 align-items-center">
+                            <div class="col-md-5"><select id="v_prod_sel" class="form-select fw-bold border-0 shadow-sm py-2"><option value="">Seleccionar Producto...</option></select></div>
+                            <div class="col-md-2"><input type="number" id="v_prod_cant" class="form-control text-center border-0 shadow-sm py-2 fw-bold" min="1" value="1" placeholder="Cant."></div>
+                            <div class="col-md-2" id="col-descuento-input"><input type="number" id="v_prod_desc" class="form-control text-center border-0 shadow-sm py-2 text-danger fw-bold" placeholder="% Desct." value="0"></div>
+                            <div class="col-md-3"><button class="btn btn-theme w-100 rounded-3 fw-bold shadow-sm py-2" onclick="agregarAlCarrito()"><i class="fa-solid fa-plus"></i> Agregar</button></div>
+                        </div>
+                    </div>
+                    <div class="table-responsive mb-4 rounded-4 border">
+                        <table class="table table-hover table-nota mb-0" id="tabla-carrito">
+                            <thead class="text-uppercase text-muted" style="font-size: 0.7em;">
+                                <tr>
+                                    <th>CÓDIGO</th>
+                                    <th class="text-start ps-3">DESCRIPCIÓN DEL PRODUCTO</th>
+                                    <th>CANT.</th>
+                                    <th class="col-desc-header">% DESCUENTO</th>
+                                    <th>PRECIO UNITARIO / EURO</th>
+                                    <th>SUB-TOTAL / EURO</th>
+                                    <th>TOTALES EURO</th>
+                                    <th>PRECIO UNIT BS</th>
+                                    <th>SUB-TOTAL BS</th>
+                                    <th>TOTALES BS</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                                         
+                    <div class="d-flex justify-content-between align-items-center bg-theme-light p-4 rounded-4 border">
+                        <div>
+                            <h6 class="text-muted fw-bold mb-0 text-uppercase small">Total Facturación (Equiv)</h6>
+                            <h4 class="fw-bolder text-theme-solid mb-0 mt-1" id="v_total_eur">€ 0.00</h4>
+                            <div id="v_total_bs_print" class="small fw-bold text-muted">Bs 0.00</div>
+                        </div>
+                        <button class="btn btn-dark rounded-pill px-5 py-3 fw-bold shadow-lg bounce-hover fs-6" onclick="procesarVenta()"><i class="fa-solid fa-check me-2"></i> Emitir Nota de Entrega</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="modulo-parametros" class="modulo-vista d-none animate-fade-up">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h2 class="fw-bold titulo-modulo d-flex align-items-center"><span class="icon-bubble title-bubble shadow-sm me-3 text-theme-solid"><i class="fa-solid fa-chart-line"></i></span> Parámetros y Tasas</h2>
+                    <div class="d-flex align-items-center gap-2">
+                        <label for="excelTasas" class="btn btn-light rounded-pill border fw-bold shadow-sm bounce-hover m-0" style="cursor: pointer;">
+                            <i class="fa-solid fa-file-excel text-success"></i> Subir Excel
+                            <input type="file" id="excelTasas" accept=".xlsx" class="d-none" onchange="subirExcelTasas()">
+                        </label>
+                    </div>
+                </div>
+                                 
+                <div class="card ios-card border-0 p-4 mb-4 shadow-sm text-center bg-light border">
+                    <h5 class="fw-bolder text-theme-solid mb-3"><i class="fa-solid fa-calendar-day me-2"></i> Estado de Tasa Activa (Día Actual)</h5>
+                    <div id="widget_tasas_hoy" class="row g-3 justify-content-center"></div>
+                </div>
+                <div class="card ios-card border-0 p-4 mb-4 bg-theme-light">
+                    <h5 class="fw-bold text-theme-solid mb-4 text-center text-md-start">Consulta de Histórico y Determinación de Brecha Máxima</h5>
+                    <div class="row g-3 mb-4">
+                        <div class="col-12 col-md-4"><label class="small fw-bold text-muted ms-1 mb-1">Fecha Inicio (Desde)</label><input type="date" id="q_fecha_ini" class="form-control ios-input text-center fw-bold text-muted w-100"></div>
+                        <div class="col-12 col-md-4"><label class="small fw-bold text-muted ms-1 mb-1">Fecha Fin (Hasta)</label><input type="date" id="q_fecha_fin" class="form-control ios-input text-center fw-bold text-muted w-100"></div>
+                        <div class="col-12 col-md-4 d-flex align-items-end"><button class="btn btn-theme rounded-pill w-100 fw-bold bounce-hover py-2" onclick="calcularCobertura()">Calcular Parámetros</button></div>
+                    </div>
+                                         
+                    <div class="row text-center g-3">
+                        <div class="col-12 col-lg-3"><div class="bg-white p-3 rounded-4 shadow-sm h-100 resultado-brecha-card"><p class="small fw-bold text-muted mb-1 text-uppercase resultado-brecha-label">Fecha pico</p><h5 class="fw-bolder text-primary mb-0" id="res_fecha_pico">--/--/----</h5><small class="fw-bold text-muted" id="res_hora_pico"></small></div></div>
+                        <div class="col-6 col-lg-2"><div class="bg-white p-3 rounded-4 shadow-sm h-100 resultado-brecha-card"><p class="small fw-bold text-muted mb-1 text-uppercase resultado-brecha-label">Tasa Binance P2P</p><h5 class="fw-bolder text-dark mb-0" id="res_max_bin">0.00</h5></div></div>
+                        <div class="col-6 col-lg-2"><div class="bg-white p-3 rounded-4 shadow-sm h-100 resultado-brecha-card"><p class="small fw-bold text-muted mb-1 text-uppercase resultado-brecha-label">Tasa EURO BCV</p><h5 class="fw-bolder text-dark mb-0" id="res_max_eur">0.00</h5></div></div>
+                        <div class="col-6 col-lg-2"><div class="bg-white p-3 rounded-4 shadow-sm h-100 border border-2 border-danger resultado-brecha-card"><p class="small fw-bold text-danger mb-1 text-uppercase resultado-brecha-label">% Brecha Máxima</p><h4 class="fw-bolder text-danger mb-0" id="res_cobertura">0.00%</h4></div></div>
+                        <div class="col-6 col-lg-3"><div class="bg-white p-3 rounded-4 shadow-sm h-100 border border-2 border-success d-flex flex-column justify-content-center"><button class="btn btn-success fw-bold w-100 h-100 shadow-sm" onclick="registrarCobertura()"><i class="fa-solid fa-shield-halved"></i> Registrar % Cobertura</button></div></div>
+                    </div>
+                </div>
+                                 
+                <div class="row g-4">
+                    <div class="col-lg-12">
+                        <button class="btn btn-dark w-100 rounded-pill fw-bold shadow-sm d-flex justify-content-between align-items-center px-4 py-3 border-0" type="button" data-bs-toggle="collapse" data-bs-target="#col_coberturas" aria-expanded="false" aria-controls="col_coberturas">
+                            <span><i class="fa-solid fa-shield-halved"></i> Historial de Coberturas Cambiarias</span>
+                            <i class="fa-solid fa-chevron-down"></i>
+                        </button>
+                        <div class="collapse mt-3" id="col_coberturas">
+                            <div class="card ios-card border-0 mb-4 bg-light">
+                                <div class="card-body p-4">
+                                    <div class="table-responsive">
+                                        <table class="table table-hover align-middle ios-table w-100 text-center" id="tabla-coberturas">
+                                            <thead><tr><th>Fecha de Registro</th><th>Rango Evaluado</th><th>Fecha del Pico</th><th>% Cobertura</th><th>Factor de Protección</th><th>Responsable</th><th>Estado</th><th>Acciones</th></tr></thead>
+                                            <tbody></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                                         
+                    <div class="col-lg-12">
+                        <button class="btn btn-dark w-100 rounded-pill fw-bold shadow-sm d-flex justify-content-between align-items-center px-4 py-3 border-0" type="button" data-bs-toggle="collapse" data-bs-target="#col_tasas" aria-expanded="false" aria-controls="col_tasas">
+                            <span><i class="fa-solid fa-clock-rotate-left"></i> Histórico de Tasas del Sistema</span>
+                            <i class="fa-solid fa-chevron-down"></i>
+                        </button>
+                        <div class="collapse mt-3" id="col_tasas">
+                            <div class="card ios-card border-0 bg-light">
+                                <div class="card-body p-4">
+                                    <div class="table-responsive">
+                                        <table class="table table-hover align-middle ios-table w-100 text-center" id="tabla-tasas">
+                                            <thead><tr><th>Fecha / Hora</th><th>Dólar BCV</th><th>Euro BCV</th><th>Binance</th><th>Bybit</th><th>Dolar Prom.</th><th>Zelle</th><th>Paypal</th><th>% Brecha</th><th>Acciones</th></tr></thead>
+                                            <tbody></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="modulo-lista_precios" class="modulo-vista d-none animate-fade-up">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h2 class="fw-bold titulo-modulo d-flex align-items-center"><span class="icon-bubble title-bubble shadow-sm me-3 text-theme-solid"><i class="fa-solid fa-list-ol"></i></span> Lista de Precios Activa</h2>
+                </div>
+                <div class="card ios-card border-0 p-4 mb-4 bg-theme-light shadow-sm text-center fw-bold">
+                   <div class="row align-items-center g-3">
+                       <div class="col-md-3">Factor de Protección: <strong class="text-success fs-5" id="lp_factor">1.00</strong></div>
+                       <div class="col-md-3">Tasa Euro (Día): <strong class="text-theme fs-5" id="lp_euro">0.00</strong></div>
+                       <div class="col-md-6 text-end">
+                           <button class="btn btn-theme rounded-pill shadow-sm" onclick="cargarListaPreciosDinamica()"><i class="fa-solid fa-rotate"></i> Recalcular / Actualizar Hoy</button>
+                       </div>
+                   </div>
+                   <hr>
+                   <div class="row align-items-center justify-content-center">
+                       <div class="col-md-6 d-flex gap-2">
+                           <input type="date" id="busqueda_fecha_lista" class="form-control text-center fw-bold text-muted">
+                           <button class="btn btn-dark rounded-pill fw-bold w-100" onclick="buscarListaPreciosHistorica()"><i class="fa-solid fa-search"></i> Ver Lista de un Día Anterior</button>
+                       </div>
+                   </div>
+                </div>
+                <div class="card ios-card border-0">
+                    <div class="card-body p-4">
+                         <div class="table-responsive">
+                             <table class="table table-hover align-middle ios-table w-100 text-center" id="tabla-lista_precios_dinamica">
+                                 <thead style="font-size: 0.7em;">
+                                     <tr>
+                                         <th>CÓDIGO</th>
+                                         <th>CATEGORÍA</th>
+                                         <th>DESCRIPCIÓN</th>
+                                         <th>UNIDAD MEDIDA</th>
+                                         <th>PRECIO OBJETIVO USD</th>
+                                         <th>PRECIO FIJO EURO</th>
+                                         <th>PRECIO DEL DÍA (BS)</th>
+                                         <th>SEMÁFORO DE COBERTURA</th>
+                                     </tr>
+                                 </thead>
+                                 <tbody></tbody>
+                             </table>
+                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="modulo-reportes" class="modulo-vista d-none animate-fade-up">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <h2 class="fw-bold titulo-modulo d-flex align-items-center"><span class="icon-bubble title-bubble shadow-sm me-3 text-theme-solid"><i class="fa-solid fa-file-pdf"></i></span> Reportes del Sistema</h2>
+                </div>
+                <div class="card ios-card border-0 p-4 mb-4 bg-theme-light">
+                    <div class="row g-3 align-items-end">
+                        <div class="col-md-3">
+                            <label class="small fw-bold text-muted">Tipo de Reporte</label>
+                            <select id="rep_tipo" class="form-select fw-bold border-0 shadow-sm" onchange="configurarFiltrosReporte()">
+                                <option value="ventas">Ventas Generales</option>
+                                <option value="devoluciones_venta">Devoluciones por Venta</option>
+                                <option value="devoluciones_compra">Devoluciones de Compra</option>
+                                <option value="notas_credito">Notas de Crédito (Emitidas)</option>
+                                <option value="clientes">Clientes Registrados</option>
+                                <option value="proveedores">Proveedores</option>
+                                <option value="lista_precios">Lista de Precios (Actual)</option>
+                                <option value="productos">Catálogo de Productos</option>
+                                <option value="existencias">Existencias de Mercancía</option>
+                                <option value="kardex">Kardex (Movimientos Todos)</option>
+                                <option value="tasas">Histórico de Tasas</option>
+                                <option value="coberturas">Coberturas Cambiarias</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2" id="col_rep_mov" style="display:none;">
+                            <label class="small fw-bold text-muted">Filtro de Movimiento</label>
+                            <select id="rep_mov_tipo" class="form-select fw-bold border-0 shadow-sm">
+                                <option value="TODOS">Todos</option>
+                                <option value="Inventario Inicial">Inventario Inicial</option>
+                                <option value="Compra">Compra</option>
+                                <option value="Venta">Venta</option>
+                                <option value="Devolución por venta">Devolución por venta</option>
+                                <option value="Devolución por compra">Devolución por compra</option>
+                                <option value="Traspaso">Traspaso</option>
+                                <option value="Descarga por daño/motivo">Descargas Manuales</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="small fw-bold text-muted">Desde Fecha</label>
+                            <input type="date" id="rep_desde" class="form-control fw-bold border-0 shadow-sm">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="small fw-bold text-muted">Hasta Fecha</label>
+                            <input type="date" id="rep_hasta" class="form-control fw-bold border-0 shadow-sm">
+                        </div>
+                        <div class="col-md-3">
+                            <button class="btn btn-theme w-100 rounded-3 fw-bold shadow-sm py-2" onclick="generarVistaPreviaReporte()"><i class="fa-solid fa-table"></i> Cargar Datos</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card ios-card border-0 d-none" id="rep_resultados_card">
+                    <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center p-4 pb-0">
+                        <h5 class="fw-bolder text-theme-solid m-0" id="rep_titulo_tabla">Resultados</h5>
+                        <div class="btn-group shadow-sm rounded-pill">
+                            <button class="btn btn-light border fw-bold text-success px-4" onclick="exportarReporte('excel')"><i class="fa-solid fa-file-excel"></i> Excel</button>
+                            <button class="btn btn-light border fw-bold text-danger px-4" onclick="exportarReporte('pdf')"><i class="fa-solid fa-file-pdf"></i> PDF</button>
+                        </div>
+                    </div>
+                    <div class="card-body p-4">
+                         <div class="table-responsive">
+                             <table class="table table-hover align-middle ios-table w-100 text-center" id="tabla-reporte-dinamica" style="font-size: 0.8em;">
+                                 <thead></thead>
+                                 <tbody></tbody>
+                             </table>
+                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="modulo-usuarios" class="modulo-vista d-none animate-fade-up" data-permiso="usuarios">
+                <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center mb-4 gap-2">
+                    <h2 class="fw-bold titulo-modulo d-flex align-items-center mb-0"><span class="icon-bubble title-bubble shadow-sm me-3 text-theme-solid"><i class="fa-solid fa-user-gear"></i></span> Usuarios y permisos</h2>
+                    <span class="badge rounded-pill bg-theme-light text-theme-solid px-3 py-2 fw-bold"><i class="fa-solid fa-shield-halved me-1"></i> Control de acceso</span>
+                </div>
+
+                <div class="row g-4">
+                    <div class="col-xl-5">
+                        <div class="card ios-card border-0 p-4 h-100 shadow-sm">
+                            <div class="d-flex align-items-center justify-content-between border-bottom pb-3 mb-3">
+                                <div>
+                                    <h5 class="fw-bolder text-theme-solid mb-1" id="titulo-form-usuario">Nuevo usuario</h5>
+                                    <p class="small text-muted mb-0">El nombre se mostrará en la barra superior y en el Kardex.</p>
+                                </div>
+                                <span class="icon-bubble title-bubble bg-theme-light text-theme-solid"><i class="fa-solid fa-user-plus"></i></span>
+                            </div>
+
+                            <form id="form-usuario" onsubmit="guardarUsuario(event)" autocomplete="off">
+                                <input type="hidden" id="usuario-id">
+                                <label class="small fw-bold text-muted mb-1 ms-1" for="usuario-nombre">Nombre visible</label>
+                                <input type="text" id="usuario-nombre" class="form-control ios-input mb-3" placeholder="Ej.: María Pérez" maxlength="100" required>
+
+                                <label class="small fw-bold text-muted mb-1 ms-1" for="usuario-usuario">Usuario</label>
+                                <input type="text" id="usuario-usuario" class="form-control ios-input mb-3" placeholder="Ej.: maria.perez" maxlength="50" autocomplete="username" required>
+
+                                <div class="row g-3 mb-2">
+                                    <div class="col-md-6">
+                                        <label class="small fw-bold text-muted mb-1 ms-1" for="usuario-contrasena">Contraseña</label>
+                                        <div class="input-group ios-input-group p-0 overflow-hidden">
+                                            <input type="password" id="usuario-contrasena" class="form-control border-0 bg-transparent py-2 px-3" placeholder="Mínimo 8 caracteres" minlength="8" autocomplete="new-password">
+                                            <button class="btn btn-light border-0" type="button" onclick="alternarVisibilidadContrasena('usuario-contrasena', this)" aria-label="Mostrar u ocultar contraseña"><i class="fa-solid fa-eye"></i></button>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="small fw-bold text-muted mb-1 ms-1" for="usuario-confirmar-contrasena">Confirmar contraseña</label>
+                                        <div class="input-group ios-input-group p-0 overflow-hidden">
+                                            <input type="password" id="usuario-confirmar-contrasena" class="form-control border-0 bg-transparent py-2 px-3" placeholder="Repita la contraseña" minlength="8" autocomplete="new-password">
+                                            <button class="btn btn-light border-0" type="button" onclick="alternarVisibilidadContrasena('usuario-confirmar-contrasena', this)" aria-label="Mostrar u ocultar contraseña"><i class="fa-solid fa-eye"></i></button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <p class="small text-muted mb-3"><i class="fa-solid fa-circle-info me-1"></i> Al editar, deje ambas contraseñas vacías para conservar la actual.</p>
+
+                                <div class="d-flex flex-wrap gap-4 p-3 rounded-4 bg-light border mb-4">
+                                    <div class="form-check form-switch mb-0">
+                                        <input class="form-check-input" type="checkbox" role="switch" id="usuario-activo" checked>
+                                        <label class="form-check-label fw-bold" for="usuario-activo">Usuario activo</label>
+                                    </div>
+                                    <div class="form-check form-switch mb-0">
+                                        <input class="form-check-input" type="checkbox" role="switch" id="usuario-es-admin">
+                                        <label class="form-check-label fw-bold" for="usuario-es-admin">Administrador total</label>
+                                    </div>
+                                </div>
+
+                                <h6 class="fw-bolder text-theme-solid border-bottom pb-2 mb-3"><i class="fa-solid fa-toggle-on me-2"></i>Accesos por módulo</h6>
+                                <p class="small text-muted">Activa únicamente las pantallas que esta persona puede consultar y utilizar.</p>
+                                <div class="row g-2 mb-4" id="permisos-usuario">
+                                    <div class="col-md-6"><div class="form-check form-switch permission-switch"><input class="form-check-input permiso-usuario" type="checkbox" role="switch" id="permiso-panel" value="panel"><label class="form-check-label" for="permiso-panel"><strong>Panel principal</strong><small class="d-block text-muted">Resumen del sistema</small></label></div></div>
+                                    <div class="col-md-6"><div class="form-check form-switch permission-switch"><input class="form-check-input permiso-usuario" type="checkbox" role="switch" id="permiso-ventas" value="ventas"><label class="form-check-label" for="permiso-ventas"><strong>Nota de entrega</strong><small class="d-block text-muted">Facturación</small></label></div></div>
+                                    <div class="col-md-6"><div class="form-check form-switch permission-switch"><input class="form-check-input permiso-usuario" type="checkbox" role="switch" id="permiso-historial_ventas" value="historial_ventas"><label class="form-check-label" for="permiso-historial_ventas"><strong>Historial de notas</strong><small class="d-block text-muted">Ventas y devoluciones</small></label></div></div>
+                                    <div class="col-md-6"><div class="form-check form-switch permission-switch"><input class="form-check-input permiso-usuario" type="checkbox" role="switch" id="permiso-clientes" value="clientes"><label class="form-check-label" for="permiso-clientes"><strong>Clientes</strong><small class="d-block text-muted">Contactos de venta</small></label></div></div>
+                                    <div class="col-md-6"><div class="form-check form-switch permission-switch"><input class="form-check-input permiso-usuario" type="checkbox" role="switch" id="permiso-proveedores" value="proveedores"><label class="form-check-label" for="permiso-proveedores"><strong>Proveedores</strong><small class="d-block text-muted">Contactos de compra</small></label></div></div>
+                                    <div class="col-md-6"><div class="form-check form-switch permission-switch"><input class="form-check-input permiso-usuario" type="checkbox" role="switch" id="permiso-almacenes" value="almacenes"><label class="form-check-label" for="permiso-almacenes"><strong>Almacenes</strong><small class="d-block text-muted">Ubicaciones</small></label></div></div>
+                                    <div class="col-md-6"><div class="form-check form-switch permission-switch"><input class="form-check-input permiso-usuario" type="checkbox" role="switch" id="permiso-categorias" value="categorias"><label class="form-check-label" for="permiso-categorias"><strong>Categorías</strong><small class="d-block text-muted">Clasificación</small></label></div></div>
+                                    <div class="col-md-6"><div class="form-check form-switch permission-switch"><input class="form-check-input permiso-usuario" type="checkbox" role="switch" id="permiso-productos" value="productos"><label class="form-check-label" for="permiso-productos"><strong>Productos</strong><small class="d-block text-muted">Catálogo</small></label></div></div>
+                                    <div class="col-md-6"><div class="form-check form-switch permission-switch"><input class="form-check-input permiso-usuario" type="checkbox" role="switch" id="permiso-existencias" value="existencias"><label class="form-check-label" for="permiso-existencias"><strong>Existencias</strong><small class="d-block text-muted">Stock por almacén</small></label></div></div>
+                                    <div class="col-md-6"><div class="form-check form-switch permission-switch"><input class="form-check-input permiso-usuario" type="checkbox" role="switch" id="permiso-movimientos" value="movimientos"><label class="form-check-label" for="permiso-movimientos"><strong>Movimientos</strong><small class="d-block text-muted">Entradas y ajustes</small></label></div></div>
+                                    <div class="col-md-6"><div class="form-check form-switch permission-switch"><input class="form-check-input permiso-usuario" type="checkbox" role="switch" id="permiso-kardex" value="kardex"><label class="form-check-label" for="permiso-kardex"><strong>Kardex</strong><small class="d-block text-muted">Trazabilidad</small></label></div></div>
+                                    <div class="col-md-6"><div class="form-check form-switch permission-switch"><input class="form-check-input permiso-usuario" type="checkbox" role="switch" id="permiso-parametros" value="parametros"><label class="form-check-label" for="permiso-parametros"><strong>Parámetros y tasas</strong><small class="d-block text-muted">Tasas y coberturas</small></label></div></div>
+                                    <div class="col-md-6"><div class="form-check form-switch permission-switch"><input class="form-check-input permiso-usuario" type="checkbox" role="switch" id="permiso-agregar_tasa" value="agregar_tasa"><label class="form-check-label" for="permiso-agregar_tasa"><strong>Agregar tasa</strong><small class="d-block text-muted">Registro desde el panel principal</small></label></div></div>
+                                    <div class="col-md-6"><div class="form-check form-switch permission-switch"><input class="form-check-input permiso-usuario" type="checkbox" role="switch" id="permiso-lista_precios" value="lista_precios"><label class="form-check-label" for="permiso-lista_precios"><strong>Lista de precios</strong><small class="d-block text-muted">Precios vigentes</small></label></div></div>
+                                    <div class="col-md-6"><div class="form-check form-switch permission-switch"><input class="form-check-input permiso-usuario" type="checkbox" role="switch" id="permiso-reportes" value="reportes"><label class="form-check-label" for="permiso-reportes"><strong>Reportes</strong><small class="d-block text-muted">Exportaciones</small></label></div></div>
+                                    <div class="col-md-6"><div class="form-check form-switch permission-switch"><input class="form-check-input permiso-usuario" type="checkbox" role="switch" id="permiso-configuracion" value="configuracion"><label class="form-check-label" for="permiso-configuracion"><strong>Configuración</strong><small class="d-block text-muted">Reglas de negocio</small></label></div></div>
+                                    <div class="col-md-6"><div class="form-check form-switch permission-switch"><input class="form-check-input permiso-usuario" type="checkbox" role="switch" id="permiso-usuarios" value="usuarios"><label class="form-check-label" for="permiso-usuarios"><strong>Usuarios</strong><small class="d-block text-muted">Altas y permisos</small></label></div></div>
+                                </div>
+                                <div class="d-flex gap-2">
+                                    <button type="button" class="btn btn-light border rounded-pill fw-bold px-4 d-none" id="btn-cancelar-usuario" onclick="cancelarEdicionUsuario()">Cancelar</button>
+                                    <button type="submit" class="btn btn-theme rounded-pill fw-bold flex-grow-1 py-2 shadow-sm bounce-hover"><i class="fa-solid fa-floppy-disk me-2"></i><span id="texto-btn-usuario">Guardar usuario</span></button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div class="col-xl-7">
+                        <div class="card ios-card border-0 p-4 h-100 shadow-sm">
+                            <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2 border-bottom pb-3 mb-3">
+                                <div>
+                                    <h5 class="fw-bolder text-theme-solid mb-1">Usuarios registrados</h5>
+                                    <p class="small text-muted mb-0">El sistema no permite quedar sin un administrador activo.</p>
+                                </div>
+                                <div class="input-group ios-input-group px-2 py-1" style="max-width: 280px;"><span class="input-group-text bg-transparent border-0 p-0 pe-2"><i class="fa-solid fa-magnifying-glass text-muted"></i></span><input type="search" id="buscar-usuarios" class="form-control bg-transparent border-0 p-0" placeholder="Buscar usuario..." oninput="filtrarUsuarios()"></div>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle ios-table w-100 text-center" id="tabla-usuarios">
+                                    <thead><tr><th>Nombre</th><th>Usuario</th><th>Rol</th><th>Accesos</th><th>Estado</th><th>Acciones</th></tr></thead>
+                                    <tbody><tr><td colspan="6" class="text-muted py-4">Cargando usuarios...</td></tr></tbody>
+                                </table>
+                            </div>
+                            <div class="alert alert-light border rounded-4 small text-muted mb-0 mt-3"><i class="fa-solid fa-life-ring text-theme-solid me-2"></i>La cuenta de emergencia se crea y protege desde el servidor; no se muestra ni se elimina desde esta pantalla.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="modulo-configuracion" class="modulo-vista d-none animate-fade-up" data-permiso="configuracion">
+                <h2 class="fw-bold mb-4 titulo-modulo d-flex align-items-center"><span class="icon-bubble title-bubble shadow-sm me-3 text-theme-solid"><i class="fa-solid fa-gear"></i></span> Configuración de Negocio</h2>
+                <div class="row g-4">
+                    <div class="col-12 col-lg-8 mx-auto">
+                        <div class="card ios-card border-0 p-4 shadow-sm">
+                            <h5 class="fw-bold mb-2 text-theme-solid border-bottom pb-2">Reglas de Negocio</h5>
+                            <p class="small text-muted mb-4"><i class="fa-solid fa-shield-halved me-1 text-theme-solid"></i>La identidad visual del sistema está fija como <strong>ZUARA APP</strong>. El tema y el nombre no son editables.</p>
+                            <div class="form-check form-switch mb-4 d-flex align-items-center gap-3">
+                                <input class="form-check-input" type="checkbox" id="switch-descuentos" style="transform: scale(1.3); cursor:pointer;">
+                                <label class="form-check-label fw-bold text-dark cursor-pointer" for="switch-descuentos">Permitir aplicar Descuentos (%) en Notas de Entrega</label>
+                            </div>
+                            <button class="btn btn-theme rounded-pill fw-bold bounce-hover w-100 py-2 shadow" onclick="guardarConfiguracionesFull(event)">Guardar Configuración</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            </div>
+        </div>
+    </div>
+</div>
+<div id="modales-dinamicos"></div>
+
+<!-- Modal de inicio de sesión. El JS lo abre automáticamente cuando no existe una sesión válida. -->
+<div class="modal fade" id="modalLogin" tabindex="-1" aria-labelledby="titulo-modal-login" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered" style="max-width: 430px;">
+        <div class="modal-content ios-modal border-0 shadow-lg overflow-hidden">
+            <div class="theme-bg p-4 text-center text-white">
+                <div class="login-illustration bg-white text-theme-solid shadow-sm mb-3"><i class="fa-solid fa-lock fs-2"></i></div>
+                <h4 class="fw-bolder mb-1" id="titulo-modal-login">Bienvenido</h4>
+                <p class="mb-0 small opacity-75">Inicia sesión para acceder a <span id="login-brand-name">ZUARA APP</span>.</p>
+            </div>
+            <div class="modal-body p-4">
+                <form id="form-login" onsubmit="iniciarSesion(event)" autocomplete="on">
+                    <div id="login-mensaje" class="alert alert-danger border-0 rounded-4 d-none small fw-bold" role="alert"></div>
+                    <label for="login-usuario" class="small fw-bold text-muted mb-1 ms-1">Usuario</label>
+                    <div class="input-group ios-input-group mb-3 p-0 overflow-hidden">
+                        <span class="input-group-text bg-transparent border-0 px-3"><i class="fa-solid fa-user text-theme-solid"></i></span>
+                        <input type="text" id="login-usuario" class="form-control bg-transparent border-0 py-2 ps-0" placeholder="Tu usuario" autocomplete="username" required autofocus>
+                    </div>
+                    <label for="login-contrasena" class="small fw-bold text-muted mb-1 ms-1">Contraseña</label>
+                    <div class="input-group ios-input-group mb-4 p-0 overflow-hidden">
+                        <span class="input-group-text bg-transparent border-0 px-3"><i class="fa-solid fa-key text-theme-solid"></i></span>
+                        <input type="password" id="login-contrasena" class="form-control bg-transparent border-0 py-2 ps-0" placeholder="Tu contraseña" autocomplete="current-password" required>
+                        <button class="btn btn-light border-0 px-3" type="button" onclick="alternarVisibilidadContrasena('login-contrasena', this)" aria-label="Mostrar u ocultar contraseña"><i class="fa-solid fa-eye"></i></button>
+                    </div>
+                    <button type="submit" class="btn btn-theme rounded-pill fw-bold w-100 py-2 shadow-sm bounce-hover" id="btn-iniciar-sesion"><i class="fa-solid fa-right-to-bracket me-2"></i>Iniciar sesión</button>
+                </form>
+                <p class="small text-muted text-center mb-0 mt-4"><i class="fa-solid fa-shield-halved me-1"></i>Las credenciales se validan de forma segura en el servidor.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Notificaciones -->
+<div class="modal fade" id="modalNotificaciones" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content ios-modal border-0 shadow-lg"><div class="modal-header border-0 pb-0 pt-4 px-4 d-flex justify-content-between align-items-center"><h5 class="modal-title fw-bolder text-theme-solid"><i class="fa-solid fa-bell"></i> Asistente y Tareas Pendientes</h5><button type="button" class="btn-close rounded-circle bg-light p-2 m-0" data-bs-dismiss="modal"></button></div><div class="modal-body p-4 pt-3" id="cuerpo-notificaciones"><p class="text-muted text-center fw-bold">No hay tareas pendientes por ahora.</p></div></div></div></div>
+
+<!-- Modal Ver Más -->
+<div class="modal fade" id="modalVerMas" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content ios-modal border-0 shadow-lg"><div class="modal-header border-0 pb-0 pt-4 px-4"><h5 class="modal-title fw-bolder text-theme-solid" id="titulo-ver-mas"><i class="fa-solid fa-circle-info"></i> Detalles del Movimiento</h5><button type="button" class="btn-close rounded-circle bg-light p-2 m-0" data-bs-dismiss="modal"></button></div><div class="modal-body p-4"><p id="ver_mas_texto" class="mb-0 text-muted fw-bold lh-lg"></p><div id="modal-ver-mas-acciones" class="d-flex justify-content-end gap-2 mt-3"></div></div></div></div></div>
+
+<!-- Modal Imagen -->
+<div class="modal fade" id="modalImagen" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content ios-modal border-0 shadow-lg bg-transparent"><div class="modal-header border-0 pb-0 pt-2 px-2 d-flex justify-content-end"><button type="button" class="btn-close rounded-circle bg-light p-2 m-0" data-bs-dismiss="modal"></button></div><div class="modal-body p-0 text-center"><img id="img_preview" src="" class="img-fluid rounded-4 shadow-lg" style="max-height: 80vh;" alt="Producto"></div></div></div></div>
+
+<!-- Modal Confirmar Borrado Tasa -->
+<div class="modal fade" id="modalConfirmarBorrarTasa" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content ios-modal border-0 shadow-lg">
+            <div class="modal-header border-0 pb-0 pt-4 px-4 d-flex justify-content-center">
+                <div class="text-center">
+                    <i class="fa-solid fa-triangle-exclamation text-danger" style="font-size: 3rem;"></i>
+                    <h4 class="modal-title fw-bolder mt-3">¡Cuidado!</h4>
+                </div>
+            </div>
+            <div class="modal-body p-4 text-center">
+                <p class="text-muted fw-bold">Estás a punto de borrar una tasa del histórico del sistema. Hacer esto afectará la coherencia en las notas de entregas ya emitidas bajo esta tasa.</p>
+                <p class="text-dark fw-bolder mb-4">¿Estás segura de que deseas borrarla?</p>
+                <div class="d-flex gap-2 justify-content-center">
+                    <button type="button" class="btn btn-light rounded-pill px-4 fw-bold" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-danger rounded-pill px-4 fw-bold shadow-sm" id="btn_confirmar_borrar_tasa">Sí, Borrar Registro</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Movimiento -->
+<div class="modal fade" id="modalMovimiento" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content ios-modal border-0 shadow-lg">
+            <div class="modal-header border-0 pb-0 pt-4 px-4 d-flex justify-content-between align-items-center">
+                <h5 class="modal-title fw-bolder"><i class="fa-solid fa-arrow-right-arrow-left text-theme-solid"></i> Registrar Movimiento</h5>
+                <button type="button" class="btn-close rounded-circle bg-light p-2 m-0" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4 pt-3">
+                <form id="form-movimiento" onsubmit="guardarMovimiento(event)">
+                    <select id="mov_prod" class="form-select ios-input mb-3 text-center fw-bold" required onchange="actualizarCamposMovimiento()"><option value="" disabled selected>Selecciona Producto...</option></select>
+                    <select id="mov_tipo" class="form-select ios-input mb-3 text-center fw-bold" required onchange="actualizarCamposMovimiento()">
+                        <option value="" disabled selected>Selecciona el tipo de movimiento...</option>
+                        <optgroup label="Entradas de Inventario">
+                            <option value="Inventario Inicial">Inventario Inicial (Día Cero / Múltiples Cargas)</option>
+                            <option value="Compra">Compra (Ingreso de nueva mercancía)</option>
+                        </optgroup>
+                        <optgroup label="Salidas y Ajustes">
+                            <option value="Descarga por daño/motivo">Descarga por daño / motivo (Manual)</option>
+                            <option value="Traspaso">Traspaso entre Almacenes</option>
+                            <option value="Devolución por compra">Devolución por compra (A proveedor)</option>
+                        </optgroup>
+                        <optgroup label="Bloqueados (Automáticos)">
+                            <option value="Venta" disabled>🔒 Venta (Se registra desde Facturación)</option>
+                            <option value="Devolución por venta" disabled>🔒 Devolución por Venta (Se registra desde el botón especial)</option>
+                        </optgroup>
+                    </select>
+                    <div id="campos_dinamicos_mov"></div>
+                    <div class="d-flex justify-content-between align-items-center mt-4">
+                        <span class="small fw-bold text-muted"><i class="fa-solid fa-user"></i> Usuario actual: <span class="text-dark" data-usuario-actual>Sin sesión</span></span>
+                        <button type="submit" class="btn btn-theme rounded-pill fw-bold px-4 py-2 shadow-sm bounce-hover">Procesar Operación</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Detalle de Existencias (Stock Breakdown) -->
+<div class="modal fade" id="modalDetalleExistencia" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content ios-modal border-0 shadow-lg">
+            <div class="modal-header bg-theme-light border-0 py-3 px-4 d-flex justify-content-between align-items-center">
+                <h5 class="modal-title fw-bolder text-theme-solid"><i class="fa-solid fa-boxes-stacked me-2"></i> Desglose de Existencias</h5>
+                <button type="button" class="btn-close rounded-circle p-2 m-0 bg-white shadow-sm border" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4 bg-light text-center">
+                <h5 class="fw-bolder mb-0 text-dark" id="de_descripcion">Producto Nombre</h5>
+                <p class="text-muted fw-bold mb-3 small" id="de_codigo">CÓDIGO: ---</p>
+                
+                <div class="row g-2 mb-4">
+                    <div class="col-6">
+                        <div class="p-2 border rounded-3 bg-white shadow-sm">
+                            <span class="small text-muted fw-bold d-block">Precio Obj. (USD)</span>
+                            <span class="fw-bolder text-success fs-5" id="de_precio">0.00</span>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="p-2 border rounded-3 bg-white shadow-sm">
+                            <span class="small text-muted fw-bold d-block">Costo Unitario</span>
+                            <span class="fw-bolder text-dark fs-5" id="de_costo">0.00</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="fw-bold text-muted">CANTIDAD FÍSICA TOTAL:</span>
+                    <span class="fw-bolder fs-5 text-dark" id="de_total">0</span>
+                </div>
+                <div class="d-flex justify-content-between mb-3 border-bottom pb-2">
+                    <span class="fw-bold text-muted">DISPONIBLE PARA VENTA:</span>
+                    <span class="fw-bolder fs-5 text-success" id="de_disp">0</span>
+                </div>
+
+                <h6 class="fw-bold text-start text-uppercase mb-2 mt-3"><i class="fa-solid fa-warehouse"></i> Existencias por Almacén</h6>
+                <ul class="list-group list-group-flush border rounded-3 text-start shadow-sm" id="de_lista_almacenes">
+                    <!-- Dinámico -->
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<!-- Modal Corrección Administrativa de Existencias -->
+<div class="modal fade" id="modalCorreccionExistencia" tabindex="-1" aria-labelledby="titulo-correccion-existencia" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content ios-modal border-0 shadow-lg">
+            <div class="modal-header theme-bg text-white border-0 py-3 px-4 d-flex justify-content-between align-items-center">
+                <div>
+                    <h5 class="modal-title fw-bolder mb-0" id="titulo-correccion-existencia">Corrección administrativa</h5>
+                    <small class="opacity-75" id="subtitulo-correccion-existencia">ZUARA APP · Existencias</small>
+                </div>
+                <button type="button" class="btn-close btn-close-white rounded-circle p-2 m-0" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body p-4">
+                <div id="corr-aviso" class="mb-3"></div>
+                <div class="row g-3">
+                    <div class="col-12">
+                        <label class="form-label small fw-bold text-muted">Producto</label>
+                        <div class="corr-producto-box">
+                            <div class="fw-bolder" id="corr-producto"></div>
+                            <div class="small text-muted" id="corr-codigo"></div>
+                        </div>
+                    </div>
+                    <div class="col-12" id="corr-carga-info-wrap">
+                        <label class="form-label small fw-bold text-muted">Última carga corregible</label>
+                        <div class="corr-producto-box small" id="corr-carga-info"></div>
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label fw-bold" for="corr_cantidad">Cantidad de la carga</label>
+                        <input type="number" min="0" step="0.01" id="corr_cantidad" class="form-control ios-input" inputmode="decimal">
+                    </div>
+                    <div class="col-12 col-md-6">
+                        <label class="form-label fw-bold" for="corr_costo">Costo unitario (USD)</label>
+                        <input type="number" min="0" step="0.01" id="corr_costo" class="form-control ios-input" inputmode="decimal">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label fw-bold" for="corr_precio">Precio objetivo (USD)</label>
+                        <input type="number" min="0" step="0.01" id="corr_precio" class="form-control ios-input" inputmode="decimal">
+                    </div>
+                </div>
+                <div class="small text-muted mt-3" id="corr-ayuda"></div>
+            </div>
+            <div class="modal-footer border-0 px-4 pb-4 pt-0 d-flex flex-column flex-sm-row gap-2">
+                <button type="button" class="btn btn-light border rounded-pill fw-bold px-4 w-100 w-sm-auto" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-theme rounded-pill fw-bold px-4 w-100 w-sm-auto" id="btn-aplicar-correccion" onclick="guardarCorreccionExistencia()"><i class="fa-solid fa-shield-halved me-1"></i>Aplicar corrección</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Devoluciones por Venta -->
+<div class="modal fade" id="modalDevolucionesVenta" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content ios-modal border-0 shadow-lg">
+            <div class="modal-header border-0 pb-0 pt-4 px-4 bg-light d-flex justify-content-between align-items-center">
+                <h5 class="modal-title fw-bolder text-danger"><i class="fa-solid fa-rotate-left"></i> Procesar Devolución por Venta</h5>
+                <button type="button" class="btn-close rounded-circle bg-white shadow-sm border p-2 m-0" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4 bg-light">
+                <div class="input-group mb-4 shadow-sm rounded-4">
+                    <span class="input-group-text bg-white border-0"><i class="fa-solid fa-search text-muted"></i></span>
+                    <input type="text" id="dev_buscar_factura" class="form-control border-0 py-2 fw-bold" placeholder="Buscar por Nº Factura (Ej: NEN0005_240826)" list="lista_facturas_dev">
+                    <datalist id="lista_facturas_dev"></datalist>
+                    <button class="btn btn-dark fw-bold px-4" onclick="buscarNotaParaDevolucion()">Buscar</button>
+                </div>
+                                 
+                <div id="dev_contenido_nota" class="d-none">
+                    <div class="card border-0 rounded-4 p-4 shadow-sm mb-4">
+                        <div class="row">
+                            <div class="col-md-6 border-end">
+                                <h6 class="fw-bolder text-muted small text-uppercase">Datos de la Factura Original</h6>
+                                <p class="mb-1"><strong>Nº:</strong> <span id="dev_factura_num"></span></p>
+                                <p class="mb-1"><strong>Fecha:</strong> <span id="dev_factura_fecha"></span></p>
+                                <p class="mb-0"><strong>Cliente:</strong> <span id="dev_factura_cliente" class="text-theme-solid fw-bold"></span></p>
+                            </div>
+                            <div class="col-md-6 ps-md-4">
+                                <h6 class="fw-bolder text-muted small text-uppercase">Motivo de la Devolución</h6>
+                                <textarea id="dev_motivo" class="form-control bg-light border-0" rows="2" placeholder="Especifique el motivo de la devolución (Obligatorio)..."></textarea>
+                            </div>
+                        </div>
+                    </div>
+                                         
+                    <h6 class="fw-bolder text-uppercase mb-3 ms-1"><i class="fa-solid fa-boxes-stacked text-theme-solid"></i> Seleccione Productos a Devolver (Validación de Stock Real)</h6>
+                    <div class="table-responsive rounded-4 border bg-white mb-4">
+                        <table class="table table-hover align-middle mb-0 text-center" id="tabla_dev_productos">
+                            <thead class="bg-light text-muted small">
+                                <tr><th>Producto</th><th>Cant. Facturada</th><th>Disp. Devuelto Anterior</th><th>Cant. a Devolver</th></tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                                         
+                    <div class="d-flex justify-content-between align-items-center">
+                        <p class="small text-muted fw-bold mb-0" style="max-width: 60%;">Al procesar, los productos irán al almacén "Devoluciones por Venta (BLOQUEADO)" y se generará una Nota de Crédito con formato PDF.</p>
+                        <button class="btn btn-danger rounded-pill px-4 py-2 fw-bold shadow-sm bounce-hover" onclick="procesarDevolucionDefinitiva()"><i class="fa-solid fa-check"></i> Emitir Nota de Crédito</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Vista Previa / PDF (Snapshot Exacto Nota de Entrega) -->
+<div class="modal fade" id="modalPreviewNota" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content ios-modal border-0 shadow-lg">
+            <div class="modal-header bg-light border-0 py-3 px-4 d-flex justify-content-between align-items-center">
+                <h5 class="modal-title fw-bolder text-theme-solid"><i class="fa-solid fa-file-invoice me-2"></i> Vista Previa (Snapshot)</h5>
+                <div>
+                    <button class="btn btn-danger rounded-pill fw-bold px-4 shadow-sm me-2 bounce-hover" onclick="descargarPDFNota()"><i class="fa-solid fa-file-pdf me-1"></i> PDF</button>
+                    <button type="button" class="btn-close rounded-circle p-2 m-0 bg-white shadow-sm border" data-bs-dismiss="modal"></button>
+                </div>
+            </div>
+            <div class="modal-body p-0 bg-secondary-subtle">
+                <div id="contenido-pdf-nota" class="p-5" style="background: white; width: 100%; min-height: 500px; color: #000; font-family: Arial, sans-serif; font-size: 11px;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom: 25px;">
+                        <div>
+                            <h2 style="margin:0; font-weight:800; font-size:18px; text-transform:uppercase;" id="pdf_empresa">ZUARA APP</h2>
+                            <p style="margin:20px 0 0 0; font-size:11px;">Nº DE ENTREGA/CONTROL</p>
+                            <p style="margin:2px 0 0 0; font-size:12px;">Ej: <span id="pdf_consecutivo" style="font-weight: bold;"></span></p>
+                        </div>
+                        <div style="text-align:left;">
+                            <p style="margin:0 0 5px 0;">TASA BCV EURO (HOY): <span id="pdf_tasa_eur"></span></p>
+                            <p style="margin:0 0 5px 0;">FECHA: <span id="pdf_fecha"></span></p>
+                            <p style="margin:0;">HORA: <span id="pdf_hora"></span></p>
+                        </div>
+                    </div>
+                                         
+                    <div style="display:flex; justify-content:space-between; margin-bottom: 25px;">
+                        <div style="width: 48%;">
+                            <h6 style="margin:0 0 5px 0; font-weight:bold; font-size:11px;">DATOS DEL CLIENTE</h6>
+                            <p style="margin:2px 0;">Cliente: <span id="pdf_cli_nom"></span></p>
+                            <p style="margin:2px 0;">Identificación: <span id="pdf_cli_doc"></span></p>
+                            <p style="margin:2px 0;">Celular/Teléfono: <span id="pdf_cli_tel"></span></p>
+                            <p style="margin:2px 0;">Correo electrónico: <span id="pdf_cli_cor"></span></p>
+                        </div>
+                        <div style="width: 48%;">
+                            <h6 style="margin:0 0 5px 0; font-weight:bold; font-size:11px;">INFORMACIÓN DE ENVÍO</h6>
+                            <div style="display:flex; justify-content:space-between;">
+                                <p style="margin:2px 0;">País: <span id="pdf_env_pais"></span></p>
+                                <p style="margin:2px 0;">Estado: <span id="pdf_env_est"></span></p>
+                            </div>
+                            <p style="margin:2px 0;">Dirección/Entrega: <span id="pdf_env_dir"></span></p>
+                            <p style="margin:2px 0;">Punto de referencia: <span id="pdf_env_ref"></span></p>
+                            <div style="display:flex; justify-content:space-between;">
+                                <p style="margin:2px 0;">Coordenadas Google maps: <span id="pdf_env_coo"></span></p>
+                                <p style="margin:2px 0;">Tipo de Envío: <span id="pdf_env_tip"></span></p>
+                            </div>
+                        </div>
+                    </div>
+                                         
+                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px;">
+                        <thead>
+                            <tr>
+                                <th style="padding:5px; text-align:left; border-bottom:1px solid #000;">Código</th>
+                                <th style="padding:5px; text-align:left; border-bottom:1px solid #000;">Descripción del<br>producto</th>
+                                <th style="padding:5px; text-align:center; border-bottom:1px solid #000;">Cant</th>
+                                <th style="padding:5px; text-align:center; border-bottom:1px solid #000;">%Descuento</th>
+                                <th style="padding:5px; text-align:right; border-bottom:1px solid #000;">P.Unit €</th>
+                                <th style="padding:5px; text-align:right; border-bottom:1px solid #000;">SubTotal €</th>
+                                <th style="padding:5px; text-align:right; border-bottom:1px solid #000;">Totales €</th>
+                                <th style="padding:5px; text-align:right; border-bottom:1px solid #000;">P.Unit (Bs)</th>
+                                <th style="padding:5px; text-align:right; border-bottom:1px solid #000;">Subtotal (Bs)</th>
+                                <th style="padding:5px; text-align:right; border-bottom:1px solid #000;">Totales (Bs)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="pdf_tabla_body"></tbody>
+                    </table>
+                                         
+                    <div style="display:flex; justify-content:flex-end; border-top:1px solid #000; padding-top:10px;">
+                        <div style="width: 220px;">
+                            <p style="margin:2px 0; font-weight:bold; display:flex; justify-content:space-between;"><span>TOTAL EUROS:</span> <span id="pdf_tot_eur"></span></p>
+                            <p style="margin:2px 0; font-weight:bold; display:flex; justify-content:space-between;"><span>TOTAL BS:</span> <span id="pdf_tot_bs"></span></p>
+                        </div>
+                    </div>
+                                         
+                    <div style="margin-top: 10px;">
+                        <p style="margin:0;">Método de pago: <span id="pdf_metodo_pago"></span></p>
+                    </div>
+                                         
+                    <div style="margin-top: 40px; text-align:center; font-weight:bold; font-size:12px;"> 
+                        ¡Gracias por su Compra!
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Vista Previa Nota de Crédito (PDF) -->
+<div class="modal fade" id="modalPreviewNC" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content ios-modal border-0 shadow-lg">
+            <div class="modal-header bg-light border-0 py-3 px-4 d-flex justify-content-between align-items-center">
+                <h5 class="modal-title fw-bolder text-danger"><i class="fa-solid fa-file-invoice me-2"></i> Nota de Crédito Generada</h5>
+                <div>
+                    <button class="btn btn-danger rounded-pill fw-bold px-4 shadow-sm me-2 bounce-hover" onclick="descargarPDFNC()"><i class="fa-solid fa-file-pdf me-1"></i> Descargar PDF</button>
+                    <button type="button" class="btn-close rounded-circle p-2 m-0 bg-white shadow-sm border" data-bs-dismiss="modal"></button>
+                </div>
+            </div>
+            <div class="modal-body p-0 bg-secondary-subtle">
+                <div id="contenido-pdf-nc" class="p-5" style="background: white; width: 100%; min-height: 500px; color: #000; font-family: Arial, sans-serif; font-size: 11px;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom: 25px;">
+                        <div>
+                            <h2 style="margin:0; font-weight:800; font-size:18px; text-transform:uppercase;" id="nc_pdf_empresa">ZUARA APP</h2>
+                            <p style="margin:20px 0 0 0; font-size:11px;">Nº DE CRÉDITO/CONTROL</p>
+                            <p style="margin:2px 0 0 0; font-size:12px;">EJ: <span id="nc_pdf_consecutivo" style="font-weight: bold;"></span></p>
+                            <!-- ESTE ES EL CAMBIO: Referencia cruzada visible a la factura -->
+                            <p style="margin:2px 0 0 0; font-size:11px; color: #d9534f; font-weight: bold;">AFECTA A NOTA DE ENTREGA: <span id="nc_pdf_origen"></span></p>
+                        </div>
+                        <div style="text-align:left;">
+                            <p style="margin:0 0 5px 0;">TASA BCV EURO (HOY): <span id="nc_pdf_tasa"></span></p>
+                            <p style="margin:0 0 5px 0;">FECHA: <span id="nc_pdf_fecha"></span></p>
+                            <p style="margin:0 0 5px 0;">HORA: <span id="nc_pdf_hora"></span></p>
+                        </div>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; margin-bottom: 25px;">
+                        <div style="width: 48%;">
+                            <h6 style="margin:0 0 5px 0; font-weight:bold; font-size:11px;">DATOS DEL CLIENTE</h6>
+                            <p style="margin:2px 0;">Cliente: <span id="nc_pdf_cli_nom"></span></p>
+                            <p style="margin:2px 0;">Identificación: <span id="nc_pdf_cli_doc"></span></p>
+                            <p style="margin:2px 0;">Celular/Teléfono: <span id="nc_pdf_cli_tel"></span></p>
+                            <p style="margin:2px 0;">Correo electrónico: <span id="nc_pdf_cli_cor"></span></p>
+                        </div>
+                        <div style="width: 48%;">
+                            <h6 style="margin:0 0 5px 0; font-weight:bold; font-size:11px;">INFORMACIÓN DE ENVÍO</h6>
+                            <div style="display:flex; justify-content:space-between;">
+                                <p style="margin:2px 0;">País: <span id="nc_pdf_env_pais"></span></p>
+                                <p style="margin:2px 0;">Estado: <span id="nc_pdf_env_est"></span></p>
+                            </div>
+                            <p style="margin:2px 0;">Dirección/Entrega: <span id="nc_pdf_env_dir"></span></p>
+                            <p style="margin:2px 0;">Punto de referencia: <span id="nc_pdf_env_ref"></span></p>
+                            <div style="display:flex; justify-content:space-between;">
+                                <p style="margin:2px 0;">Coordenadas Googles maps: <span id="nc_pdf_env_coo"></span></p>
+                                <p style="margin:2px 0;">Tipo de Envio: <span id="nc_pdf_env_tip"></span></p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div style="text-align: center; margin-bottom: 15px;">
+                        <h6 style="font-weight:bold; font-size: 13px;">NOTA DE CRÉDITO POR DEVOLUCIÓN DE VENTA</h6>
+                    </div>
+
+                    <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px;">
+                        <thead>
+                            <tr>
+                                <th style="padding:5px; text-align:left; border-bottom:1px solid #000;">Código</th>
+                                <th style="padding:5px; text-align:left; border-bottom:1px solid #000;">Descripción del<br>producto</th>
+                                <th style="padding:5px; text-align:center; border-bottom:1px solid #000;">Cant</th>
+                                <th style="padding:5px; text-align:center; border-bottom:1px solid #000;">%Descuento</th>
+                                <th style="padding:5px; text-align:right; border-bottom:1px solid #000;">P.Unit €</th>
+                                <th style="padding:5px; text-align:right; border-bottom:1px solid #000;">SubTotal €</th>
+                                <th style="padding:5px; text-align:right; border-bottom:1px solid #000;">Totales €</th>
+                                <th style="padding:5px; text-align:right; border-bottom:1px solid #000;">P.Unit (Bs)</th>
+                                <th style="padding:5px; text-align:right; border-bottom:1px solid #000;">Subtotal (Bs)</th>
+                                <th style="padding:5px; text-align:right; border-bottom:1px solid #000;">Totales (Bs)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="nc_pdf_tabla_body"></tbody>
+                    </table>
+
+                    <div style="display:flex; justify-content:space-between; border-top:1px solid #000; padding-top:10px;">
+                        <div style="width: 60%;">
+                            <p style="margin:2px 0;">Método de pago: <span id="nc_pdf_metodo_pago"></span></p>
+                            <p style="margin:10px 0 2px 0; font-weight:bold;">MOTIVO DEVOLUCIÓN: <span id="nc_pdf_motivo" style="font-weight:normal;"></span></p>
+                        </div>
+                        <div style="width: 35%;">
+                            <p style="margin:2px 0; font-weight:bold; display:flex; justify-content:space-between;"><span>TOTAL EUROS:</span> <span id="nc_pdf_tot_eur"></span></p>
+                            <p style="margin:2px 0; font-weight:bold; display:flex; justify-content:space-between;"><span>TOTAL BS:</span> <span id="nc_pdf_tot_bs"></span></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="static/supabase-config.js"></script>
+    <script src="static/supabase-api.js"></script>
+<script src="static/main.js"></script>
+</body>
+</html>
