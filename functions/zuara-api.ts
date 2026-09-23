@@ -162,11 +162,36 @@ export default {
         return json(alms.map((a:any)=>({...a,stock:mov.reduce((s:number,m:any)=>s+(Number(m.almacen_destino_id)===Number(a.id)?Number(m.cantidad||0):Number(m.almacen_origen_id)===Number(a.id)?-Number(m.cantidad||0):0),0)})));
       }
 
+      if (req.method === "GET" && path === "/api/tasas/brecha-maxima") {
+        if (!permiso(user,"parametros")) return json({error:"No es posible realizar esta operación."},403);
+        const ini=url.searchParams.get("fecha_inicio"), fin=url.searchParams.get("fecha_fin");
+        const args:any[]=[]; let sql="SELECT id,fecha,hora,binance,euro_bcv,registrado_por FROM historico_tasas";
+        const where:string[]=[];
+        if(ini){args.push(ini);where.push(`fecha >= ${args.length}`);}
+        if(fin){args.push(fin);where.push(`fecha <= ${args.length}`);}
+        if(where.length) sql+=" WHERE "+where.join(" AND ");
+        const rows=(await pool.query(sql,args)).rows.map((x:any)=>({...x,brecha:Number(x.euro_bcv)>0?Number(x.binance)/Number(x.euro_bcv)-1:0}));
+        rows.sort((a:any,b:any)=>b.brecha-a.brecha);
+        return json(rows[0] || {});
+      }
+
+      if (req.method === "GET" && path.startsWith("/api/historico_precios/")) {
+        if (!permiso(user,"lista_precios")) return json({error:"No es posible realizar esta operación."},403);
+        const fecha=decodeURIComponent(path.split("/").pop()||"");
+        const row=(await pool.query("SELECT json_data FROM historico_precios_dia WHERE fecha=$1 LIMIT 1",[fecha])).rows[0];
+        if(!row) return json({error:"No hay registros de precios para esta fecha."},404);
+        try { return json(JSON.parse(row.json_data)); } catch { return json({error:"El histórico de precios no tiene un formato válido."},500); }
+      }
+
       const mutation:Record<string,string>={"POST /api/movimientos":"registrar_movimiento","POST /api/ventas":"registrar_venta","POST /api/devoluciones":"registrar_devolucion","POST /api/configuracion":"guardar_configuracion","POST /api/tasas":"registrar_tasa","POST /api/tasas/upload":"upload_tasas"};
       let body:any={};
       if(req.method!=="GET") body=await req.json().catch(()=>({}));
       let action=mutation[`${req.method} ${path}`];
-      if(req.method==="POST"&&/^\/api\/existencias\/\d+$/.test(path)) action="corregir_existencia";
+      if(req.method==="POST"&&(/^\/api\/existencias\/\d+$/.test(path) || /^\/api\/existencias\/\d+\/corregir$/.test(path))) {
+        action="corregir_existencia";
+        const mm=path.match(/^\/api\/existencias\/(\d+)(?:\/corregir)?$/);
+        if(mm && !body.producto_id) body.producto_id=Number(mm[1]);
+      }
       if(action){ const out=await rpc(user.id,action,body); if(out?.error)return json({error:out.error},Number(out.status_code||400)); return json(out); }
 
       const ventaDet=path.match(/^\/api\/ventas\/detalles\/(.+)$/);
