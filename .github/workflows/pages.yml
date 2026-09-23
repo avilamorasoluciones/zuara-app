@@ -37,7 +37,7 @@ jobs:
         run: |
           rm -rf _site
           mkdir -p _site
-          cp templates/index.html _site/index.html
+          cp index.html _site/index.html
           cp -R static _site/static
           if [ -d assets ]; then cp -R assets _site/assets; fi
 
