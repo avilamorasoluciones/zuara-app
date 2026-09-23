@@ -21,10 +21,14 @@ jobs:
           node-version: 22
 
       - name: Install Neon CLI
-        run: npm install -g neon
+        run: npm install -g neon@latest
+
+      - name: Link Neon project
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+        run: neon link --no-checks --project-id "${{ secrets.NEON_PROJECT_ID }}" --branch main
 
       - name: Deploy Neon Function
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
-        run: |
-          neon deploy --project-id "${{ secrets.NEON_PROJECT_ID }}" --branch main --update-existing
+        run: neon deploy --branch main --update-existing
