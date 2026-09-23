@@ -1,5 +1,5 @@
 import { Pool } from "npm:pg";
-import { createHmac, scryptSync, timingSafeEqual, pbkdf2Sync } from "node:crypto";
+import { createHmac, scryptSync, timingSafeEqual, pbkdf2Sync, randomBytes } from "node:crypto";
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 5 });
 const JWT_SECRET = process.env.ZUARA_JWT_SECRET || process.env.DATABASE_URL || "zuara-local-secret";
@@ -73,7 +73,7 @@ async function appUserFromRequest(req:Request) {
   const u = r.rows[0];
   return u?.activo ? u : null;
 }
-function makeWerkzeugScrypt(password:string) { const salt=Buffer.from(require("node:crypto").randomBytes(16)).toString("base64url"); const derived=scryptSync(password,salt,64,{N:32768,r:8,p:1,maxmem:64*1024*1024}); return salt+"$"+Buffer.from(derived).toString("hex"); }\nfunction nowCaracas() {
+function makeWerkzeugScrypt(password:string) { const salt=Buffer.from(randomBytes(16)).toString("base64url"); const derived=scryptSync(password,salt,64,{N:32768,r:8,p:1,maxmem:64*1024*1024}); return salt+"$"+Buffer.from(derived).toString("hex"); }\nfunction nowCaracas() {
   return new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Caracas",dateStyle:"short",timeStyle:"medium"}).format(new Date()).replace(",","");
 }
 const TABLES = new Set(["clientes","proveedores","almacenes","categorias","productos","historico_tasas","historico_coberturas","notas_credito","ventas","usuarios","configuracion"]);
