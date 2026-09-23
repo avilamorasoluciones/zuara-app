@@ -89,6 +89,14 @@ export default {
     if (req.method === "OPTIONS") return new Response(null,{status:204,headers:CORS});
     const url = new URL(req.url);
     const path = url.pathname.replace(/\/+$/,"") || "/";
+    if (req.method === "GET" && (path === "/api/health" || path === "/health")) {
+      try {
+        const r = await pool.query("SELECT current_database() AS database, now() AS server_time");
+        return json({status:"ok",service:"ZUARA API",database:r.rows[0]?.database||null,server_time:r.rows[0]?.server_time||null,version:"2026-09-23-neon-1"});
+      } catch {
+        return json({status:"error",service:"ZUARA API"},503);
+      }
+    }
     try {
       if (req.method === "POST" && path === "/api/auth/login") {
         const body = await req.json().catch(()=>({}));
