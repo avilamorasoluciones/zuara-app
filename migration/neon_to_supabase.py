@@ -138,11 +138,38 @@ def sync_sequences(dst):
             if not seq:
                 continue
             cur.execute(
-                f"select setval(%s, coalesce((select max(id) from public.%s),0)+1, false)"
+                "select setval(%s, coalesce((select max(id) from public.%s), 0) + 1, false)"
                 % ("%s", table),
                 (seq,),
             )
     dst.commit()
+
+
+def preflight(src, dst):
+    missing = []
+    for table in TABLE_ORDER:
+        if not get_columns(src, table):
+            missing.append(f"Neon:{table}")
+        if not get_columns(dst, table):
+            missing.append(f"Supabase:{table}")
+    if missing:
+        raise RuntimeError("Faltan tablas requeridas: " + ", ".join(missing))
+
+    # Las columnas de negocio que la aplicación necesita deben existir en destino.
+    required = {
+        "ventas": {
+            "cliente_documento", "cliente_correo", "pais", "estado_cliente",
+            "punto_referencia", "coordenadas", "tipo_envio",
+        },
+        "usuarios": {"auth_user_id"},
+    }
+    for table, cols in required.items():
+        dst_cols = set(get_columns(dst, table))
+        missing_cols = sorted(cols - dst_cols)
+        if missing_cols:
+            raise RuntimeError(
+                f"Supabase:{table} no tiene columnas requeridas: {', '.join(missing_cols)}"
+            )
 
 
 def main():
@@ -159,9 +186,13 @@ def main():
     src = psycopg2.connect(neon_url)
     dst = psycopg2.connect(supabase_url)
     try:
+        preflight(src, dst)
         for table in TABLE_ORDER:
             totals[table] = copy_table(src, dst, table)
         sync_sequences(dst)
+    except Exception:
+        dst.rollback()
+        raise
     finally:
         src.close()
         dst.close()
