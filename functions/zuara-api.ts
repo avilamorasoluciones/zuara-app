@@ -73,7 +73,7 @@ async function appUserFromRequest(req:Request) {
   const u = r.rows[0];
   return u?.activo ? u : null;
 }
-function nowCaracas() {
+function makeWerkzeugScrypt(password:string) { const salt=Buffer.from(require("node:crypto").randomBytes(16)).toString("base64url"); const derived=scryptSync(password,salt,64,{N:32768,r:8,p:1,maxmem:64*1024*1024}); return salt+"$"+Buffer.from(derived).toString("hex"); }\nfunction nowCaracas() {
   return new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Caracas",dateStyle:"short",timeStyle:"medium"}).format(new Date()).replace(",","");
 }
 const TABLES = new Set(["clientes","proveedores","almacenes","categorias","productos","historico_tasas","historico_coberturas","notas_credito","ventas","usuarios","configuracion"]);
@@ -190,6 +190,58 @@ export default {
         const v=(await pool.query("SELECT consecutivo FROM ventas WHERE id=$1",[Number(delVenta[1])])).rows[0];
         if(!v)return json({error:"La venta indicada no existe."},404);
         const out=await rpc("delete_venta",{consecutivo:v.consecutivo}); if(out?.error)return json({error:out.error},400); return json(out);
+      }
+
+      if (req.method === "GET" && path === "/api/configuracion") {
+        if (!permiso(user,"configuracion")) return json({error:"No es posible realizar esta operación."},403);
+        const rows=(await pool.query("SELECT clave,valor FROM configuracion ORDER BY id")).rows;
+        return json(Object.fromEntries(rows.map((x:any)=>[x.clave,x.valor])));
+      }
+
+      const usuarioMatch=path.match(/^\/api\/usuarios(?:\/(\d+))?$/);
+      if (usuarioMatch) {
+        if (!permiso(user,"usuarios")) return json({error:"No es posible realizar esta operación."},403);
+        const id=usuarioMatch[1]?Number(usuarioMatch[1]):null;
+        if (req.method==="POST") {
+          const password=String(body?.contrasena||"");
+          const usuario=String(body?.usuario||"").trim();
+          if(!usuario||!password) return json({error:"Usuario y contraseña son obligatorios."},400);
+          const hash="scrypt:32768:8:1$"+makeWerkzeugScrypt(password);
+          const permisos=typeof body.permisos==="string"?body.permisos:JSON.stringify(body.permisos||[]);
+          await pool.query("INSERT INTO usuarios (nombre,usuario,contrasena,activo,es_admin,permisos,protegido,fecha_registro) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
+            [body.nombre||"",usuario,hash,body.activo!==false,Boolean(body.es_admin),permisos,false,nowCaracas()]);
+          return json({status:"ok"});
+        }
+        if(!id) {
+          if(req.method!=="GET") return json({error:"Usuario no encontrado."},404);
+          const rows=(await pool.query("SELECT id,nombre,usuario,activo,es_admin,permisos,protegido,fecha_registro FROM usuarios ORDER BY id DESC")).rows;
+          return json(rows);
+        }
+        const target=(await pool.query("SELECT * FROM usuarios WHERE id=$1",[id])).rows[0];
+        if(!target) return json({error:"Usuario no encontrado."},404);
+        if(req.method==="PUT"){
+          const willAdmin=Boolean(body.es_admin), willActive=body.activo!==false;
+          if(target.es_admin&&target.activo&&(!willAdmin||!willActive)){
+            const n=Number((await pool.query("SELECT count(*)::int AS n FROM usuarios WHERE es_admin=true AND activo=true")).rows[0].n);
+            if(n<=1)return json({error:"Debe permanecer al menos un administrador activo en el sistema."},400);
+          }
+          const permisos=typeof body.permisos==="string"?body.permisos:JSON.stringify(body.permisos||[]);
+          const pass=String(body.contrasena||"");
+          if(pass) await pool.query("UPDATE usuarios SET nombre=$1,usuario=$2,activo=$3,es_admin=$4,permisos=$5,contrasena=$6 WHERE id=$7",
+            [body.nombre??target.nombre,String(body.usuario??target.usuario).trim(),willActive,willAdmin,permisos,"scrypt:32768:8:1$"+makeWerkzeugScrypt(pass),id]);
+          else await pool.query("UPDATE usuarios SET nombre=$1,usuario=$2,activo=$3,es_admin=$4,permisos=$5 WHERE id=$6",
+            [body.nombre??target.nombre,String(body.usuario??target.usuario).trim(),willActive,willAdmin,permisos,id]);
+          return json({status:"ok"});
+        }
+        if(req.method==="DELETE"){
+          if(target.protegido)return json({status:"ok"});
+          if(target.es_admin&&target.activo){
+            const n=Number((await pool.query("SELECT count(*)::int AS n FROM usuarios WHERE es_admin=true AND activo=true")).rows[0].n);
+            if(n<=1)return json({error:"No se puede eliminar el último administrador activo."},400);
+          }
+          await pool.query("DELETE FROM usuarios WHERE id=$1",[id]);
+          return json({status:"ok"});
+        }
       }
 
       const m=path.match(/^\/api\/([a-z_]+)(?:\/(\d+))?$/);
