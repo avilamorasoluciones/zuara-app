@@ -1,14 +1,6 @@
 name: Publicar ZUARA en GitHub Pages
 
 on:
-  push:
-    branches: ["main", "supabase-web-migration"]
-    paths:
-      - "templates/**"
-      - "index.html"
-      - "static/**"
-      - "assets/**"
-      - ".github/workflows/pages.yml"
   workflow_dispatch:
 
 permissions:
