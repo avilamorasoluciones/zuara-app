@@ -95,7 +95,14 @@ create table if not exists public.ventas (
   porcentaje_brecha_aplicado real default 0,
   estado text,
   registrado_por text,
-  metodo_pago text
+  metodo_pago text,
+  cliente_documento text,
+  cliente_correo text,
+  pais text,
+  estado_cliente text,
+  punto_referencia text,
+  coordenadas text,
+  tipo_envio text
 );
 
 create table if not exists public.detalle_nota_entrega (
@@ -491,8 +498,8 @@ for each row execute function private.enforce_producto_price_admin();
 
 revoke all on function private.enforce_producto_price_admin() from public, anon, authenticated;
 
--- Validación de fechas de tasas a nivel DB: nunca acepta 2026-02-31 ni formatos
--- distintos de YYYY-MM-DD, incluso si alguien intenta escribir fuera de la UI.
+-- Validación de fechas de tasas a nivel DB: nunca acepta fechas imposibles
+-- ni formatos distintos de YYYY-MM-DD.
 create or replace function private.validar_fecha_iso_real(p_fecha text)
 returns boolean
 language plpgsql
@@ -501,28 +508,7 @@ set search_path = ''
 as $$
 declare d date;
 begin
-  if p_fecha is null or p_fecha !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2} then
-    return false;
-  end if;
-  begin
-    d := p_fecha::date;
-  exception when others then
-    return false;
-  end;
-  return d::text = p_fecha;
-end;
-$$;
-
-alter table public.historico_tasas
-  drop constraint if exists historico_tasas_fecha_valida;
-alter table public.historico_tasas
-  add constraint historico_tasas_fecha_valida
-  check (private.validar_fecha_iso_real(fecha));
-
--- Elimina permisos anónimos y deja las funciones privadas fuera de la API.
-revoke all on schema private from public;
-grant usage on schema private to authenticated;
- then
+  if p_fecha is null or p_fecha !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' then
     return false;
   end if;
   begin
