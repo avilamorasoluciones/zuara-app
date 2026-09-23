@@ -50,7 +50,13 @@ function tienePermiso(user: any, permiso: string) {
   if (user?.es_admin) return true;
   try {
     const p = typeof user.permisos === 'string' ? JSON.parse(user.permisos || '[]') : (user.permisos || []);
-    return Array.isArray(p) && (p.includes(permiso) || (permiso === 'agregar_tasa' && p.includes('parametros')));
+    if (Array.isArray(p)) {
+      return p.includes(permiso) || (permiso === 'agregar_tasa' && p.includes('parametros'));
+    }
+    if (p && typeof p === 'object') {
+      return Boolean(p[permiso]) || (permiso === 'agregar_tasa' && Boolean(p.parametros));
+    }
+    return false;
   } catch (_) { return false; }
 }
 
