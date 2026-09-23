@@ -111,7 +111,7 @@ returns jsonb
 language plpgsql
 security definer
 set search_path = public
-as $
+as $$
 declare
   u record;
   v record;
