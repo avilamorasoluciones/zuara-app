@@ -69,7 +69,8 @@
     if (!u.pathname.startsWith('/api/')) return nativeFetch(input, init);
 
     if (!API || API.includes('REEMPLAZAR_CON_URL')) {
-      return responseJSON({ error: 'ZUARA todavía no tiene configurada la URL de su Neon Function.' }, 503);
+      // Mientras Neon no esté desplegado, conserva el backend Flask/Render.
+      return nativeFetch(input, init);
     }
 
     const method = String(init.method || 'GET').toUpperCase();
