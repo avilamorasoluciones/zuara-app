@@ -42,6 +42,8 @@ create or replace function public.zuara_existencias()
 returns setof jsonb
 language sql
 stable
+security invoker
+set search_path = public
 as $$
   select jsonb_build_object(
     'id', p.id,
@@ -75,11 +77,30 @@ as $$
         and m.tipo in ('Inventario Inicial','Compra','Ajuste administrativo - Entrada','Ajuste administrativo - Salida')
       order by m.id desc limit 1
     ),0),
-    'precio_usd', coalesce(p.precio_usd,0)
+    'precio_usd', coalesce(p.precio_usd,0),
+    'ultima_carga_id', (
+      select m.id from movimientos m where m.producto_id=p.id
+        and m.tipo in ('Inventario Inicial','Compra') order by m.id desc limit 1
+    ),
+    'ultima_carga_cantidad', (
+      select m.cantidad from movimientos m where m.producto_id=p.id
+        and m.tipo in ('Inventario Inicial','Compra') order by m.id desc limit 1
+    ),
+    'ultima_carga_fecha', (
+      select m.fecha_registro from movimientos m where m.producto_id=p.id
+        and m.tipo in ('Inventario Inicial','Compra') order by m.id desc limit 1
+    ),
+    'ultima_carga_documento', (
+      select m.documento from movimientos m where m.producto_id=p.id
+        and m.tipo in ('Inventario Inicial','Compra') order by m.id desc limit 1
+    )
   )
   from productos p
   order by p.descripcion asc;
 $$;
+
+grant execute on function public.zuara_existencias() to authenticated;
+
 
 create or replace function public.zuara_mutate_neon(
   p_user_id bigint,
