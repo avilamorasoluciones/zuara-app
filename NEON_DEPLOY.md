@@ -26,7 +26,12 @@ Replace:
 
 with that HTTPS URL.
 
-## 5. Test order
+## 5. Comprobación técnica rápida
+After deployment, open the Neon Function URL with `/api/health`. It should return JSON with `status: "ok"`, confirming that the Function can reach the Neon database before testing the full application.
+
+The Neon deployment workflow is intentionally manual until the two GitHub Actions secrets are configured. After that, it can be changed back to automatic deployment on pushes.
+
+## 6. Test order
 Keep Render active while testing. Verify:
 1. Login
 2. Panel and counters
@@ -39,3 +44,5 @@ Keep Render active while testing. Verify:
 9. Reports / historical data
 
 Only after the complete test passes should Render be removed.
+
+The frontend keeps the same `/api/...` contract used by the Flask version, so future fixes can normally be made in one backend file (`functions/zuara-api.ts`) and, when needed, one SQL mutation file (`migration/0004_neon_zuara_mutations.sql`).
