@@ -150,8 +150,7 @@ export default {
       }
 
       if (method === 'GET' && pathname === '/api/lista_precios_data') {
-        const url = new URL(req.url);
-        const requestedDate = url.searchParams.get('fecha') || '';
+        const requestedDate = String(input?.query?.fecha || '');
         const hoy = new Intl.DateTimeFormat('en-CA',{timeZone:'America/Caracas',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
         const fecha = appUser.es_admin && requestedDate ? requestedDate : hoy;
         const {data:cob,error:ce} = await ctx.supabaseAdmin.from('historico_coberturas')
