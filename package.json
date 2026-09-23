@@ -1,5 +1,6 @@
 {
   "name":"zuara-neon-backend",
   "private":true,
-  "devDependencies":{"@neondatabase/config":"latest"}
+  "dependencies":{"pg":"latest"},
+  "devDependencies":{"@neon/config":"latest"}
 }
