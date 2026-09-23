@@ -167,7 +167,7 @@ export default {
       if(req.method!=="GET") body=await req.json().catch(()=>({}));
       let action=mutation[`${req.method} ${path}`];
       if(req.method==="POST"&&/^\/api\/existencias\/\d+$/.test(path)) action="corregir_existencia";
-      if(action){ const out=await rpc(action,body); if(out?.error)return json({error:out.error},Number(out.status_code||400)); return json(out); }
+      if(action){ const out=await rpc(user.id,action,body); if(out?.error)return json({error:out.error},Number(out.status_code||400)); return json(out); }
 
       const ventaDet=path.match(/^\/api\/ventas\/detalles\/(.+)$/);
       if(req.method==="GET"&&ventaDet){
@@ -189,7 +189,7 @@ export default {
       if(req.method==="DELETE"&&delVenta){
         const v=(await pool.query("SELECT consecutivo FROM ventas WHERE id=$1",[Number(delVenta[1])])).rows[0];
         if(!v)return json({error:"La venta indicada no existe."},404);
-        const out=await rpc("delete_venta",{consecutivo:v.consecutivo}); if(out?.error)return json({error:out.error},400); return json(out);
+        const out=await rpc(user.id,"delete_venta",{consecutivo:v.consecutivo}); if(out?.error)return json({error:out.error},400); return json(out);
       }
 
       if (req.method === "GET" && path === "/api/configuracion") {
