@@ -73,14 +73,15 @@ async function appUserFromRequest(req:Request) {
   const u = r.rows[0];
   return u?.activo ? u : null;
 }
-function makeWerkzeugScrypt(password:string) { const salt=Buffer.from(randomBytes(16)).toString("base64url"); const derived=scryptSync(password,salt,64,{N:32768,r:8,p:1,maxmem:64*1024*1024}); return salt+"$"+Buffer.from(derived).toString("hex"); }\nfunction nowCaracas() {
+function makeWerkzeugScrypt(password:string) { const salt=Buffer.from(randomBytes(16)).toString("base64url"); const derived=scryptSync(password,salt,64,{N:32768,r:8,p:1,maxmem:64*1024*1024}); return salt+"$"+Buffer.from(derived).toString("hex"); }
+function nowCaracas() {
   return new Intl.DateTimeFormat("sv-SE",{timeZone:"America/Caracas",dateStyle:"short",timeStyle:"medium"}).format(new Date()).replace(",","");
 }
 const TABLES = new Set(["clientes","proveedores","almacenes","categorias","productos","historico_tasas","historico_coberturas","notas_credito","ventas","usuarios","configuracion"]);
 const PERM = {clientes:"clientes",proveedores:"proveedores",almacenes:"almacenes",categorias:"categorias",productos:"productos",historico_tasas:"parametros",historico_coberturas:"parametros",notas_credito:"historial_ventas",ventas:"ventas",usuarios:"usuarios",configuracion:"configuracion"} as Record<string,string>;
 
-async function rpc(action:string,payload:any) {
-  const r = await pool.query("SELECT * FROM zuara_mutate($1,$2::jsonb)",[action,JSON.stringify(payload ?? {})]);
+async function rpc(userId:number, action:string,payload:any) {
+  const r = await pool.query("SELECT * FROM zuara_mutate_neon($1,$2,$3::jsonb)",[userId,action,JSON.stringify(payload ?? {})]);
   return r.rows[0]?.zuara_mutate_neon ?? r.rows[0]?.zuara_mutate ?? r.rows[0] ?? {status:"ok"};
 }
 
