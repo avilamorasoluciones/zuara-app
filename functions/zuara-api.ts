@@ -1,4 +1,4 @@
-import { Pool } from "npm:pg";
+import { Pool } from "pg";
 import { createHmac, scryptSync, timingSafeEqual, pbkdf2Sync, randomBytes } from "node:crypto";
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 5 });
