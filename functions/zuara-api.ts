@@ -81,7 +81,7 @@ const PERM = {clientes:"clientes",proveedores:"proveedores",almacenes:"almacenes
 
 async function rpc(action:string,payload:any) {
   const r = await pool.query("SELECT * FROM zuara_mutate($1,$2::jsonb)",[action,JSON.stringify(payload ?? {})]);
-  return r.rows[0]?.zuara_mutate ?? r.rows[0] ?? {status:"ok"};
+  return r.rows[0]?.zuara_mutate_neon ?? r.rows[0]?.zuara_mutate ?? r.rows[0] ?? {status:"ok"};
 }
 
 export default {
