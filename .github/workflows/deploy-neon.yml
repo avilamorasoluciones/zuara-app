@@ -1,0 +1,30 @@
+name: Deploy ZUARA Neon Function
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - supabase-web-migration
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Neon CLI
+        run: npm install -g neon
+
+      - name: Deploy Neon Function
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+        run: |
+          neon deploy --project-id "${{ secrets.NEON_PROJECT_ID }}" --branch main --update-existing
