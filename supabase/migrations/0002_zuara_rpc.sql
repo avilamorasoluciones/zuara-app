@@ -555,7 +555,7 @@ begin
     end loop;
 
     insert into notas_credito(consecutivo,fecha_registro,consecutivo_origen,cliente_nombre,total_eur,total_bs,motivo,registrado_por,estado)
-    values(consec,ahora,p_payload->>'cliente_nombre',coalesce(p_payload->>'cliente_nombre',''),total_eur,total_bs,p_payload->>'motivo',u.nombre,'DISPONIBLE');
+    values(consec,ahora,coalesce(p_payload->>'consecutivo_origen',''),coalesce(p_payload->>'cliente_nombre',''),total_eur,total_bs,p_payload->>'motivo',u.nombre,'DISPONIBLE');
 
     select coalesce(max(id),0)+1 into mov_num from movimientos;
     for item in select * from jsonb_array_elements(p_payload->'detalles') loop
