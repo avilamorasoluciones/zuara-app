@@ -1,6 +1,9 @@
 name: Publicar ZUARA en GitHub Pages
 
 on:
+  push:
+    branches:
+      - supabase-web-migration
   workflow_dispatch:
 
 permissions:
