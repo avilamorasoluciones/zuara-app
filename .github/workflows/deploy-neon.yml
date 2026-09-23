@@ -2,9 +2,6 @@ name: Deploy ZUARA Neon Function
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - supabase-web-migration
 
 jobs:
   deploy:
