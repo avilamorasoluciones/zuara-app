@@ -446,12 +446,20 @@ begin
 
     insert into ventas(
       consecutivo,fecha_registro,fecha_facturacion,cliente_nombre,cliente_telefono,direccion_entrega,
+      cliente_documento,cliente_correo,pais,estado_cliente,punto_referencia,coordenadas,tipo_envio,
       total_eur,total_bs,tasa_bcv_euro_aplicada,tasa_binance_aplicada,porcentaje_brecha_aplicado,
       estado,registrado_por,metodo_pago
     ) values (
       consec,ahora,fecha_fact,trim(p_payload->>'cliente_nombre'),
       coalesce(p_payload->>'cliente_telefono',''),
       coalesce(p_payload->>'env_direccion',''),
+      coalesce(p_payload->>'cliente_doc',''),
+      coalesce(p_payload->>'cliente_correo',''),
+      coalesce(p_payload->>'env_pais','Venezuela'),
+      coalesce(p_payload->>'env_estado',''),
+      coalesce(p_payload->>'env_referencia',''),
+      coalesce(p_payload->>'env_coordenadas',''),
+      coalesce(p_payload->>'env_tipo',''),
       total_eur,total_bs,tasa_eur,tasa_bin,brecha,
       coalesce(p_payload->>'estado_semaforo','EMITIDA'),u.nombre,
       coalesce(p_payload->>'metodo_pago','')
