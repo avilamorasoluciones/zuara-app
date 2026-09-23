@@ -28,6 +28,11 @@ jobs:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
         run: neon link --no-checks --project-id "${{ secrets.NEON_PROJECT_ID }}" --branch main
 
+      - name: Apply Neon SQL
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+        run: neon psql main -- -v ON_ERROR_STOP=1 -f migration/0004_neon_zuara_mutations.sql
+
       - name: Deploy Neon Function
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
