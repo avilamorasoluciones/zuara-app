@@ -99,7 +99,7 @@ as $$
   order by p.descripcion asc;
 $$;
 
-grant execute on function public.zuara_existencias() to authenticated;
+
 
 
 create or replace function public.zuara_mutate_neon(
@@ -110,7 +110,7 @@ create or replace function public.zuara_mutate_neon(
 returns jsonb
 language plpgsql
 security definer
-set search_path = public, private
+set search_path = public
 as $
 declare
   u record;
