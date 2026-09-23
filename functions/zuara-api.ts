@@ -298,22 +298,53 @@ export default {
           return json(id?(rows[0]||null):rows);
         }
         if(req.method==="POST"){
-          if(table==="usuarios") return json({error:"Use the usuarios UI after the Neon auth migration."},400);
-          const cols=Object.keys(body||{}).filter(k=>k!=="id"&&/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(k));
-          const vals=cols.map(k=>body[k]);
+          if(table==="usuarios") return json({error:"Use el módulo de usuarios."},400);
+          const payload:any={...body};
+          if(["clientes","proveedores","almacenes","categorias","productos","historico_tasas","historico_coberturas"].includes(table)){
+            payload.fecha_registro=nowCaracas();
+            payload.registrado_por=user.nombre||user.usuario;
+          }
+          if(table==="historico_tasas"){
+            const fecha=String(payload.fecha||"");
+            const bin=Number(payload.binance||0), eur=Number(payload.euro_bcv||0);
+            if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(fecha)) return json({error:"La fecha de la tasa no es válida."},400);
+            if((await pool.query("SELECT 1 FROM historico_tasas WHERE fecha=$1 AND binance=$2 AND euro_bcv=$3 LIMIT 1",[fecha,bin,eur])).rowCount) return json({error:"Ya existe una tasa con la misma fecha, Binance P2P y Euro BCV. No se registró un duplicado."},409);
+            payload.brecha=eur>0?bin/eur-1:0;
+          }
+          const cols=Object.keys(payload).filter(k=>k!=="id"&&/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(k));
+          const vals=cols.map(k=>payload[k]);
           if(!cols.length)return json({error:"Datos vacíos."},400);
-          const placeholders=cols.map((_,i)=>"$"+(i+1)).join(",");
-          await pool.query(`INSERT INTO ${table} (${cols.join(",")}) VALUES (${placeholders})`,vals);
+          await pool.query(`INSERT INTO ${table} (${cols.join(",")}) VALUES (${cols.map((_,i)=>"$"+(i+1)).join(",")})`,vals);
           return json({status:"ok"});
         }
         if(req.method==="PUT"&&id){
-          const cols=Object.keys(body||{}).filter(k=>k!=="id"&&/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(k));
-          const vals=cols.map(k=>body[k]);
+          if(table==="productos" && Object.prototype.hasOwnProperty.call(body,"precio_usd")){
+            const actual=(await pool.query("SELECT precio_usd FROM productos WHERE id=$1",[id])).rows[0];
+            if(actual && Math.abs(Number(actual.precio_usd||0)-Number(body.precio_usd||0))>0.0000001 && !user.es_admin)
+              return json({error:"No es posible realizar esta operación."},403);
+          }
+          const payload:any={...body}; delete payload.id;
+          if(table==="historico_tasas"){
+            const bin=Number(payload.binance||0), eur=Number(payload.euro_bcv||0);
+            payload.brecha=eur>0?bin/eur-1:0;
+          }
+          const cols=Object.keys(payload).filter(k=>/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(k));
+          const vals=cols.map(k=>payload[k]);
           if(!cols.length)return json({error:"Datos vacíos."},400);
-          await pool.query(`UPDATE ${table} SET ${cols.map((c,i)=>`${c}=$${i+1}`).join(",")} WHERE id=$${cols.length+1}`,[...vals,id]);
+          await pool.query(`UPDATE ${table} SET ${cols.map((x,i)=>x+"=$"+(i+1)).join(",")} WHERE id=${cols.length+1}`,[...vals,id]);
           return json({status:"ok"});
         }
-        if(req.method==="DELETE"&&id){ await pool.query(`DELETE FROM ${table} WHERE id=$1`,[id]); return json({status:"ok"}); }
+        if(req.method==="DELETE"&&id){
+          if(table==="usuarios"){
+            const target=(await pool.query("SELECT protegido,es_admin,activo FROM usuarios WHERE id=$1",[id])).rows[0];
+            if(target?.protegido)return json({status:"ok"});
+            if(target?.es_admin&&target?.activo){
+              const n=Number((await pool.query("SELECT count(*)::int AS n FROM usuarios WHERE es_admin=true AND activo=true")).rows[0].n);
+              if(n<=1)return json({error:"No se puede eliminar el último administrador activo."},400);
+            }
+          }
+          await pool.query(`DELETE FROM ${table} WHERE id=$1`,[id]); return json({status:"ok"});
+        }
       }
       return json({error:"Ruta no implementada."},404);
     } catch (e:any) {
