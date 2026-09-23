@@ -280,6 +280,8 @@ begin
     case
       when trim(coalesce(u.permisos,'')) like '[%'
         then trim(u.permisos)::jsonb
+      when trim(coalesce(u.permisos,'')) like '{%'
+        then trim(u.permisos)::jsonb
       else '[]'::jsonb
     end
   into v_permisos
@@ -288,8 +290,15 @@ begin
     and u.activo = true
   limit 1;
 
-  return coalesce((v_permisos ->> p_permiso)::boolean, false)
+  if jsonb_typeof(v_permisos) = 'array' then
+    return v_permisos ? p_permiso
+      or (p_permiso = 'agregar_tasa' and v_permisos ? 'parametros');
+  elsif jsonb_typeof(v_permisos) = 'object' then
+    return coalesce((v_permisos ->> p_permiso)::boolean, false)
       or (p_permiso = 'agregar_tasa' and coalesce((v_permisos ->> 'parametros')::boolean, false));
+  end if;
+
+  return false;
 exception when others then
   return false;
 end;
