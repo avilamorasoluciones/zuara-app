@@ -26,7 +26,7 @@ jobs:
       - name: Link Neon project
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
-        run: neon link --no-checks --project-id "${{ secrets.NEON_PROJECT_ID }}" --branch main
+        run: neon link --project-id "${{ secrets.NEON_PROJECT_ID }}" --branch main
 
       - name: Apply Neon SQL
         env:
