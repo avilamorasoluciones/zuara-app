@@ -30,11 +30,11 @@ jobs:
         run: |
           test -n "$NEON_API_KEY"
           test -n "$NEON_PROJECT_ID"
-          neonctl psql main --api-key "$NEON_API_KEY" --project-id "$NEON_PROJECT_ID" -- -v ON_ERROR_STOP=1 -f migration/0004_neon_zuara_mutations.sql
+          neonctl psql production --api-key "$NEON_API_KEY" --project-id "$NEON_PROJECT_ID" -- -v ON_ERROR_STOP=1 -f migration/0004_neon_zuara_mutations.sql
 
       - name: Deploy ZUARA Function
         env:
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
           NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
         run: |
-          neonctl deploy --api-key "$NEON_API_KEY" --project-id "$NEON_PROJECT_ID" --branch main --update-existing
+          neonctl deploy --api-key "$NEON_API_KEY" --project-id "$NEON_PROJECT_ID" --branch production --update-existing
