@@ -19,7 +19,7 @@ The backend files and SQL migrations are not copied into the Pages artifact.
 
 ## 4. Neon Function URL
 After the first successful Neon deployment, copy the public URL of the Function named **ZUARA API** and put it in:
-`static/supabase-config.js`
+`static/neon-config.js`
 
 Replace:
 `REEMPLAZAR_CON_URL_DE_NEON_FUNCTION`
