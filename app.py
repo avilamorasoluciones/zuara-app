@@ -501,9 +501,10 @@ def corregir_ultima_carga(producto_id):
         conn.commit()
         return jsonify({'status': 'ok', 'ajuste': consecutivo if carga and 'consecutivo' in locals() else None,
                         'delta_cantidad': delta if carga and 'delta' in locals() else 0})
-    except Exception as e:
+    except Exception:
         conn.conn.rollback()
-        return jsonify({'error': str(e)}), 500
+        app.logger.exception('Error interno de API.')
+        return jsonify({'error': 'Error interno del servidor.'}), 500
     finally:
         conn.close()
 
