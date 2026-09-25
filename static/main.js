@@ -372,20 +372,37 @@ function actualizarContadores(conteo = {}) {
 
 async function cargarDataTotal() {
     if (!sesionActual) return;
-    const endpoints = ['clientes', 'proveedores', 'almacenes', 'categorias', 'productos', 'existencias', 'kardex', 'ventas', 'tasas', 'notas_credito', 'coberturas'];
-    if (tienePermiso('usuarios')) endpoints.push('usuarios');
+
+    const puede = (...permisos) => permisos.some(tienePermiso);
+    const accesoConsulta = {
+        clientes: puede('clientes', 'ventas', 'reportes'),
+        proveedores: puede('proveedores', 'productos', 'reportes'),
+        almacenes: puede('almacenes', 'movimientos', 'existencias', 'reportes'),
+        categorias: puede('categorias', 'productos', 'reportes'),
+        productos: puede('productos', 'ventas', 'existencias', 'movimientos', 'kardex', 'lista_precios', 'reportes'),
+        existencias: puede('existencias', 'ventas', 'reportes'),
+        kardex: puede('kardex', 'reportes'),
+        ventas: puede('historial_ventas', 'reportes'),
+        tasas: puede('parametros', 'lista_precios', 'ventas', 'reportes'),
+        notas_credito: puede('historial_ventas', 'ventas', 'reportes'),
+        coberturas: puede('parametros', 'reportes')
+    };
+
+    const endpoints = Object.keys(accesoConsulta).filter(endpoint => accesoConsulta[endpoint]);
+    if (puede('usuarios')) endpoints.push('usuarios');
 
     await Promise.all(endpoints.map(async endpoint => {
         try {
-            const respuesta = await fetch(`/api/${endpoint}`);
+            const respuesta = await fetch(`/api/${endpoint}`, { cache: 'no-store', credentials: 'same-origin' });
             if (respuesta.ok) dataGlobal[endpoint] = await respuesta.json();
+            else if (respuesta.status === 401) console.warn(`Sesión inválida al cargar ${endpoint}.`);
         } catch (error) {
             console.error(`No se pudo cargar ${endpoint}.`, error);
         }
     }));
 
     try {
-        const respuesta = await fetch('/api/resumen');
+        const respuesta = await fetch('/api/resumen', { cache: 'no-store', credentials: 'same-origin' });
         if (respuesta.ok) {
             const resumen = await respuesta.json();
             notificacionesGlobales = resumen.notificaciones || {};
@@ -413,19 +430,12 @@ async function cargarDataTotal() {
     await cargarTasasYConfig();
 }
 
-function usuarioEstaActivo(usuario) {
-    return usuario?.activo === true || usuario?.activo === 1 || usuario?.activo === '1' || String(usuario?.estado || '').toUpperCase() === 'ACTIVO';
-}
-
-function permisosDeUsuario(usuario) {
-    return PERMISOS.filter(permiso => Boolean(normalizarPermisos(usuario?.permisos)[permiso]));
-}
-
-function renderTablaUsuarios() {
+function actualizarUsuarios() {
     const cuerpo = document.querySelector('#tabla-usuarios tbody');
     if (!cuerpo) return;
     const termino = document.getElementById('buscar-usuarios')?.value.trim().toLocaleLowerCase('es') || '';
     const usuarios = dataGlobal.usuarios.filter(usuario => {
+        if (usuario.protegido) return false;
         const texto = `${usuario.nombre || ''} ${usuario.usuario || ''}`.toLocaleLowerCase('es');
         return !termino || texto.includes(termino);
     });
@@ -544,7 +554,7 @@ async function eliminarUsuario(id) {
 
 function formatearFechaTasa(fecha) {
     const texto = String(fecha || '').trim();
-    const match = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(texto);
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(texto);
     return match ? `${match[3]}/${match[2]}/${match[1]}` : texto;
 }
 
@@ -936,19 +946,76 @@ async function prepararVenta() {
         document.getElementById('v_prod_sel').disabled = false;
     }
          
-    let prodsSeguros = res.productos.filter(p => p.estado_semaforo !== 'MERCADO_VOLATIL');
-    let opcionesHTML = '<option value="" disabled selected>Seleccionar Producto...</option>';
-    prodsSeguros.forEach(p => {
-        let stockData = dataGlobal.existencias.find(e => e.id === p.id);
-        let disp = stockData ? stockData.stock_disponible_venta : 0;
-        if(disp > 0) {
-            opcionesHTML += `<option value="${p.id}" data-max="${disp}">${p.descripcion} (Disp: ${disp} | €${p.precio_eur.toFixed(2)})</option>`;
-        }
-    });
-    document.getElementById('v_prod_sel').innerHTML = opcionesHTML;
+    // Primero cargamos existencias para que el buscador pueda calcular el stock disponible.
+    // Antes se llenaba el selector antes de cargar dataGlobal.existencias y todos los productos
+    // podían quedar filtrados como si tuvieran stock 0.
     await cargarDataTotal();
+    let prodsSeguros = res.productos.filter(p => p.estado_semaforo !== 'MERCADO_VOLATIL');
+    actualizarSelectorProductosVenta(prodsSeguros);
     document.getElementById('v_num_entrega').value = generarNEN();
     showModule('ventas');
+}
+
+function normalizarTextoProductoVenta(valor) {
+    return String(valor || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+function actualizarSelectorProductosVenta(productos) {
+    const sel = document.getElementById('v_prod_sel');
+    const input = document.getElementById('v_prod_busqueda');
+    const resultados = document.getElementById('v_prod_resultados');
+    if (!sel) return;
+
+    const disponibles = (productos || []).map(p => {
+        const stockData = dataGlobal.existencias.find(e => String(e.id) === String(p.id));
+        const disp = stockData ? Number(stockData.stock_disponible_venta || 0) : 0;
+        return { ...p, stockDisponible: disp, codigoMostrar: p.codigo || p.codigo_barras || 'SIN CÓDIGO' };
+    }).filter(p => p.stockDisponible > 0);
+    
+    // Los IDs pueden llegar como número o como texto desde PostgreSQL/JSON.
+    // La comparación se normaliza arriba para no ocultar productos con existencia.
+
+    let opcionesHTML = '<option value="" disabled selected>Seleccionar Producto...</option>';
+    disponibles.forEach(p => {
+        opcionesHTML += `<option value="${p.id}" data-max="${p.stockDisponible}">[${escapeHTML(p.codigoMostrar)}] ${escapeHTML(p.descripcion || 'Producto sin descripción')} (Disp: ${p.stockDisponible} | €${Number(p.precio_eur || 0).toFixed(2)})</option>`;
+    });
+    sel.innerHTML = opcionesHTML;
+    sel.value = '';
+
+    function pintarResultados(termino = '') {
+        if (!resultados) return;
+        const busqueda = normalizarTextoProductoVenta(termino.trim());
+        const filtrados = disponibles.filter(p => normalizarTextoProductoVenta(`${p.codigoMostrar} ${p.descripcion || ''}`).includes(busqueda));
+
+        if (filtrados.length === 0) {
+            resultados.innerHTML = '<div class="p-3 text-muted small fw-bold text-center">No se encontraron productos que coincidan.</div>';
+        } else {
+            resultados.innerHTML = filtrados.map(p => `
+                <button type="button" class="list-group-item list-group-item-action text-start py-2 px-3 producto-busqueda-item" data-producto-id="${p.id}">
+                    <div class="fw-bolder text-theme-solid">${escapeHTML(p.codigoMostrar)}</div>
+                    <div class="small fw-bold">${escapeHTML(p.descripcion || 'Producto sin descripción')}</div>
+                    <div class="small text-muted">Disponible: ${p.stockDisponible} · €${Number(p.precio_eur || 0).toFixed(2)}</div>
+                </button>
+            `).join('');
+        }
+        resultados.classList.remove('d-none');
+        resultados.querySelectorAll('.producto-busqueda-item').forEach(boton => {
+            boton.addEventListener('click', () => {
+                const producto = disponibles.find(p => String(p.id) === String(boton.dataset.productoId));
+                if (!producto) return;
+                sel.value = String(producto.id);
+                input.value = `[${producto.codigoMostrar}] ${producto.descripcion || 'Producto sin descripción'}`;
+                resultados.classList.add('d-none');
+            });
+        });
+    }
+
+    if (input) {
+        input.oninput = () => pintarResultados(input.value);
+        input.onfocus = () => pintarResultados(input.value);
+        input.value = '';
+    }
+    if (resultados) resultados.classList.add('d-none');
 }
 
 function formatMoney(num, sim = '$') { return new Intl.NumberFormat('es-VE', { style: 'currency', currency: 'USD' }).format(num).replace('USD', sim); }
@@ -1246,6 +1313,35 @@ async function guardarFormulario(e, m) {
         let horaFormat = hora;
         if(horaFormat.length === 5) horaFormat += ":00";
 
+        // Evitar registros inútiles: si ya existe una tasa para la misma fecha,
+        // preguntamos antes de crear otra. Si los valores Binance + Euro son
+        // exactamente iguales, se considera un duplicado y no se guarda.
+        const tasasMismaFecha = (dataGlobal.tasas || []).filter(t => String(t.fecha || '') === fecha);
+        if (tasasMismaFecha.length) {
+            const duplicadaExacta = tasasMismaFecha.some(t =>
+                Number(t.binance || 0) === Number(binance || 0) &&
+                Number(t.euro_bcv || 0) === Number(euro || 0)
+            );
+
+            if (duplicadaExacta) {
+                alert(
+                    "⚠️ ESTA TASA YA EXISTE\n\n" +
+                    "Ya existe un registro para " + formatearFechaTasa(fecha) +
+                    " con el mismo Binance P2P y Euro BCV.\n\n" +
+                    "No se guardará otra vez para evitar duplicados."
+                );
+                return;
+            }
+
+            const continuar = confirm(
+                "ℹ️ YA EXISTE UNA TASA PARA ESTA FECHA\n\n" +
+                "La fecha " + formatearFechaTasa(fecha) + " ya tiene uno o más registros, " +
+                "pero los valores ingresados son diferentes.\n\n" +
+                "¿Deseas registrar esta nueva tasa?"
+            );
+            if (!continuar) return;
+        }
+
         payload = {
             fecha,
             hora: horaFormat,
@@ -1451,6 +1547,8 @@ function agregarAlCarrito() {
     });
          
     document.getElementById('v_prod_sel').value = '';
+    document.getElementById('v_prod_busqueda').value = '';
+    document.getElementById('v_prod_resultados').classList.add('d-none');
     document.getElementById('v_prod_cant').value = '1';
     document.getElementById('v_prod_desc').value = '0';
     renderCarrito();
@@ -1666,12 +1764,12 @@ window.verPreviewNota = async function(consecutivo, id) {
                 <td style="padding:5px; border-bottom:1px solid #000;">${it.producto_nombre}</td>
                 <td style="padding:5px; text-align:center; border-bottom:1px solid #000;">${it.cantidad}</td>
                 <td style="padding:5px; text-align:center; border-bottom:1px solid #000;">${it.descuento||0}%</td>
-                <td style="padding:5px; text-align:right; border-bottom:1px solid #000;">€ ${parseFloat(it.precio_unitario_euro_snapshot).toFixed(2)}</td>
-                <td style="padding:5px; text-align:right; border-bottom:1px solid #000;">€ ${parseFloat(it.subtotal_euro_snapshot).toFixed(2)}</td>
-                <td style="padding:5px; text-align:right; border-bottom:1px solid #000;">€ ${parseFloat(it.total_euro_snapshot).toFixed(2)}</td>
-                <td style="padding:5px; text-align:right; border-bottom:1px solid #000;">Bs ${parseFloat(it.precio_unitario_bs_snapshot).toFixed(2)}</td>
-                <td style="padding:5px; text-align:right; border-bottom:1px solid #000;">Bs ${parseFloat(it.subtotal_bs_snapshot).toFixed(2)}</td>
-                <td style="padding:5px; text-align:right; border-bottom:1px solid #000;">Bs ${parseFloat(it.total_bs_snapshot).toFixed(2)}</td>
+                <td style="padding:5px; text-align:right; white-space:nowrap; border-bottom:1px solid #000;">€ ${parseFloat(it.precio_unitario_euro_snapshot).toFixed(2)}</td>
+                <td style="padding:5px; text-align:right; white-space:nowrap; border-bottom:1px solid #000;">€ ${parseFloat(it.subtotal_euro_snapshot).toFixed(2)}</td>
+                <td style="padding:5px; text-align:right; white-space:nowrap; border-bottom:1px solid #000;">€ ${parseFloat(it.total_euro_snapshot).toFixed(2)}</td>
+                <td style="padding:5px; text-align:right; white-space:nowrap; border-bottom:1px solid #000;">Bs ${parseFloat(it.precio_unitario_bs_snapshot).toFixed(2)}</td>
+                <td style="padding:5px; text-align:right; white-space:nowrap; border-bottom:1px solid #000;">Bs ${parseFloat(it.subtotal_bs_snapshot).toFixed(2)}</td>
+                <td style="padding:5px; text-align:right; white-space:nowrap; border-bottom:1px solid #000;">Bs ${parseFloat(it.total_bs_snapshot).toFixed(2)}</td>
             </tr>`;
         });
     }
@@ -1744,12 +1842,12 @@ window.llenarYMostrarModalNC = async function(consecutivoNc) {
                 <td style="padding:5px; border-bottom:1px solid #000;">${it.producto_nombre}</td>
                 <td style="padding:5px; text-align:center; border-bottom:1px solid #000;">${it.cantidad}</td>
                 <td style="padding:5px; text-align:center; border-bottom:1px solid #000;">${desc}%</td>
-                <td style="padding:5px; text-align:right; border-bottom:1px solid #000;">€ ${parseFloat(it.precio_eur).toFixed(2)}</td>
-                <td style="padding:5px; text-align:right; border-bottom:1px solid #000;">€ ${sub_eur.toFixed(2)}</td>
-                <td style="padding:5px; text-align:right; border-bottom:1px solid #000;">€ ${tot_eur.toFixed(2)}</td>
-                <td style="padding:5px; text-align:right; border-bottom:1px solid #000;">Bs ${parseFloat(it.precio_bs).toFixed(2)}</td>
-                <td style="padding:5px; text-align:right; border-bottom:1px solid #000;">Bs ${sub_bs.toFixed(2)}</td>
-                <td style="padding:5px; text-align:right; border-bottom:1px solid #000;">Bs ${tot_bs.toFixed(2)}</td>
+                <td style="padding:5px; text-align:right; white-space:nowrap; border-bottom:1px solid #000;">€ ${parseFloat(it.precio_eur).toFixed(2)}</td>
+                <td style="padding:5px; text-align:right; white-space:nowrap; border-bottom:1px solid #000;">€ ${sub_eur.toFixed(2)}</td>
+                <td style="padding:5px; text-align:right; white-space:nowrap; border-bottom:1px solid #000;">€ ${tot_eur.toFixed(2)}</td>
+                <td style="padding:5px; text-align:right; white-space:nowrap; border-bottom:1px solid #000;">Bs ${parseFloat(it.precio_bs).toFixed(2)}</td>
+                <td style="padding:5px; text-align:right; white-space:nowrap; border-bottom:1px solid #000;">Bs ${sub_bs.toFixed(2)}</td>
+                <td style="padding:5px; text-align:right; white-space:nowrap; border-bottom:1px solid #000;">Bs ${tot_bs.toFixed(2)}</td>
             </tr>`;
         });
     }
@@ -1764,130 +1862,481 @@ window.descargarPDFNC = function() {
 }
 
 // ---------------- REPORTES EXCEL Y VISTA PREVIA ---------------- //
+
+window.reporteActual = {
+    tipo: '',
+    titulo: '',
+    headers: [],
+    rows: [],
+    filters: []
+};
+
+const ZUARA_REPORTES = {
+    ventas: { titulo: 'Reporte total de ventas' },
+    ventas_detalladas: { titulo: 'Reporte detallado de ventas' },
+    lista_precios: { titulo: 'Lista de precios' },
+    existencias: { titulo: 'EXISTENCIAS' },
+    notas_credito: { titulo: 'Historial Notas de crédito' },
+    devoluciones_venta: { titulo: 'Devoluciones en venta' },
+    devoluciones_compra: { titulo: 'Devoluciones en compra' },
+    clientes: { titulo: 'Clientes' },
+    proveedores: { titulo: 'Proveedores' },
+    productos: { titulo: 'Catálogo de Productos' },
+    kardex: { titulo: 'Kardex' },
+    tasas: { titulo: 'Histórico de Tasas' },
+    coberturas: { titulo: 'Coberturas Cambiarias' }
+};
+
 window.configurarFiltrosReporte = function() {
     if (!exigirPermiso('reportes')) return;
-    let t = document.getElementById('rep_tipo').value;
-    if(t === 'kardex') document.getElementById('col_rep_mov').style.display = 'block';
-    else document.getElementById('col_rep_mov').style.display = 'none';
+    const t = document.getElementById('rep_tipo').value;
+    const colMov = document.getElementById('col_rep_mov');
+    if (colMov) colMov.style.display = t === 'kardex' ? 'block' : 'none';
+};
+
+function reporteFiltroFechas() {
+    const desde = document.getElementById('rep_desde')?.value || '';
+    const hasta = document.getElementById('rep_hasta')?.value || '';
+    return [desde ? `Desde: ${desde}` : '', hasta ? `Hasta: ${hasta}` : ''].filter(Boolean);
 }
 
-window.generarVistaPreviaReporte = function() {
+function reporteEsc(v) {
+    return escapeHTML(v === null || v === undefined || v === '' ? '-' : String(v));
+}
+
+function reporteFechaValida(valor, desde, hasta) {
+    if (!valor) return false;
+    const d = new Date(String(valor).replace(' ', 'T'));
+    return !isNaN(d) && d >= desde && d <= hasta;
+}
+
+function reporteMostrarValor(valor, header) {
+    if (valor === null || valor === undefined || valor === '') return '-';
+    const h = String(header || '').toUpperCase();
+    if (/PRECIO|TOTAL|MONTO|COSTO|EURO|USD|BS/.test(h) && typeof valor === 'number') {
+        if (h.includes('USD')) return '$ ' + valor.toFixed(2);
+        if (h.includes('BS')) return 'Bs ' + valor.toFixed(2);
+        return '€ ' + valor.toFixed(2);
+    }
+    if (/%/.test(h) && typeof valor === 'number') return valor.toFixed(2) + '%';
+    if (typeof valor === 'number') return Number.isInteger(valor) ? String(valor) : valor.toFixed(2);
+    return String(valor);
+}
+
+function reporteEsNumerico(header) {
+    return /CANT|PRECIO|TOTAL|MONTO|COSTO|EURO|USD|BS|FACTOR|%|PICO/.test(String(header || '').toUpperCase());
+}
+
+function reporteAlineacion(header) {
+    const h = String(header || '').toUpperCase();
+    if (/CÓDIGO|CODIGO|NOTA|FACTURA|CONSECUTIVO|DOCUMENTO|IDENTIFICACIÓN|ESTADO|PAÍS|FECHA|HORA|CANT|%|MOVIMIENTO|MÉTODO|TIPO/.test(h)) return 'center';
+    if (reporteEsNumerico(h)) return 'right';
+    return 'left';
+}
+
+function reporteHtmlTabla(headers, rows) {
+    const th = document.querySelector('#tabla-reporte-dinamica thead');
+    const tb = document.querySelector('#tabla-reporte-dinamica tbody');
+    th.innerHTML = `<tr>${headers.map(h => `<th>${reporteEsc(h)}</th>`).join('')}</tr>`;
+    tb.innerHTML = rows.map(row => `<tr>${row.map((v,i) => `<td class="${reporteAlineacion(headers[i]) === 'right' ? 'text-end' : reporteAlineacion(headers[i]) === 'center' ? 'text-center' : 'text-start'}">${reporteEsc(reporteMostrarValor(v, headers[i]))}</td>`).join('')}</tr>`).join('');
+}
+
+window.generarVistaPreviaReporte = async function() {
     if (!exigirPermiso('reportes')) return;
-    let tipo = document.getElementById('rep_tipo').value;
-    let desde = new Date(document.getElementById('rep_desde').value + "T00:00:00");
-    let hasta = new Date(document.getElementById('rep_hasta').value + "T23:59:59");
-         
-    if(isNaN(desde) || isNaN(hasta)) return alert("Selecciona fechas válidas para el reporte.");
-         
-    let th = document.querySelector('#tabla-reporte-dinamica thead');
-    let tb = document.querySelector('#tabla-reporte-dinamica tbody');
-    th.innerHTML = ''; tb.innerHTML = '';
-         
+
+    const tipo = document.getElementById('rep_tipo').value;
+    const desdeVal = document.getElementById('rep_desde').value;
+    const hastaVal = document.getElementById('rep_hasta').value;
+    const desde = new Date((desdeVal || '1900-01-01') + 'T00:00:00');
+    const hasta = new Date((hastaVal || '2999-12-31') + 'T23:59:59');
+
+    if (desdeVal && isNaN(desde)) return alert('Selecciona una fecha Desde válida.');
+    if (hastaVal && isNaN(hasta)) return alert('Selecciona una fecha Hasta válida.');
+    if (desde > hasta) return alert('La fecha Desde no puede ser posterior a Hasta.');
+
+    let headers = [];
+    let rows = [];
+    let filters = reporteFiltroFechas();
+    const config = ZUARA_REPORTES[tipo] || { titulo: `Reporte de ${tipo}` };
+    const titulo = config.titulo;
+
+    if (tipo === 'ventas_detalladas' || tipo === 'ventas') {
+        const esDetallado = tipo === 'ventas_detalladas';
+        headers = esDetallado
+            ? ['FECHA','N° NOTA DE ENTREGA','CLIENTE','IDENTIFICACIÓN','CELULAR/TELÉFONO','CORREO ELECTRÓNICO','PAÍS','DIRECCIÓN DE ENTREGA','PUNTO DE REFERENCIA','COORDENADAS GOOGLES MAPS','ESTADO','TIPO DE ENVÍO','PRODUCTO','CANTIDAD','PRECIO EN EURO BCV','%DESCUENTO','TOTALES EUROS','TOTALES BS','MÉTODO DE PAGO']
+            : ['FECHA','N° NOTA DE ENTREGA','CLIENTE','IDENTIFICACIÓN','CELULAR/TELÉFONO','CORREO ELECTRÓNICO','PAÍS','DIRECCIÓN DE ENTREGA','PUNTO DE REFERENCIA','COORDENADAS GOOGLES MAPS','ESTADO','TIPO DE ENVÍO','TOTAL EURO','TOTAL BS','TOTAL PRODUCTOS','TASA EURO DEL DÍA','MÉTODO DE PAGO'];
+
+        const filtrado = dataGlobal.ventas.filter(v => {
+            const fecha = v.fecha_facturacion || (v.fecha_registro || '').split(' ')[0];
+            return reporteFechaValida(fecha, desde, hasta);
+        });
+
+        const resultados = await Promise.all(filtrado.map(async v => {
+            let items = [];
+            try {
+                const respuesta = await fetch(`/api/ventas/detalles/${encodeURIComponent(v.consecutivo)}`, {
+                    cache: 'no-store',
+                    credentials: 'same-origin'
+                });
+                if (respuesta.ok) items = await respuesta.json();
+            } catch (error) {
+                console.error('No se pudieron cargar los detalles de la venta', v.consecutivo, error);
+            }
+
+            // Ventas antiguas pueden no tener el snapshot de cliente. En ese caso
+            // usamos el registro actual como respaldo.
+            const cli = dataGlobal.clientes.find(c => String(c.nombre || '').trim() === String(v.cliente_nombre || '').trim()) || {};
+            const fecha = v.fecha_facturacion || (v.fecha_registro || '').split(' ')[0];
+            const documento = v.cliente_documento || cli.documento || '-';
+            const telefono = v.cliente_telefono || cli.telefono || '-';
+            const correo = v.cliente_correo || cli.correo || '-';
+            const pais = v.pais || cli.pais || '-';
+            const direccion = v.direccion_entrega || cli.direccion_entrega || '-';
+            const referencia = v.punto_referencia || cli.punto_referencia || '-';
+            const coordenadas = v.coordenadas || cli.coordenadas || '-';
+            const estado = v.estado_cliente || cli.estado || '-';
+            const tipoEnvio = v.tipo_envio || cli.tipo_envio || '-';
+            const metodoPago = v.metodo_pago || '-';
+            const tasaEuro = Number(v.tasa_bcv_euro_aplicada || 0);
+
+            if (esDetallado) {
+                if (!items.length) {
+                    return [[fecha,v.consecutivo,v.cliente_nombre,documento,telefono,correo,pais,direccion,referencia,coordenadas,estado,tipoEnvio,'-',0,0,0,0,0,metodoPago]];
+                }
+                return items.map(it => [
+                    fecha,
+                    v.consecutivo,
+                    v.cliente_nombre,
+                    documento,
+                    telefono,
+                    correo,
+                    pais,
+                    direccion,
+                    referencia,
+                    coordenadas,
+                    estado,
+                    tipoEnvio,
+                    it.producto_nombre || '-',
+                    Number(it.cantidad || 0),
+                    Number(it.precio_unitario_euro_snapshot || 0),
+                    Number(it.descuento || 0),
+                    Number(it.total_euro_snapshot || 0),
+                    Number(it.total_bs_snapshot || 0),
+                    metodoPago
+                ]);
+            }
+
+            const totalProductos = items.reduce((total, it) => total + Number(it.cantidad || 0), 0);
+            return [[
+                fecha,
+                v.consecutivo,
+                v.cliente_nombre,
+                documento,
+                telefono,
+                correo,
+                pais,
+                direccion,
+                referencia,
+                coordenadas,
+                estado,
+                tipoEnvio,
+                Number(v.total_eur || 0),
+                Number(v.total_bs || 0),
+                totalProductos,
+                tasaEuro,
+                metodoPago
+            ]];
+        }));
+
+        rows = resultados.flat();
+    } else if (tipo === 'devoluciones_venta' || tipo === 'devoluciones_compra') {
+        headers = ['Fecha','Consecutivo','Movimiento','Producto','Cant. Devuelta','Doc. Afectado','Responsable'];
+        const movimiento = tipo === 'devoluciones_venta' ? 'Devolución por venta' : 'Devolución por compra';
+        rows = dataGlobal.kardex.filter(k => {
+            const d = new Date(String(k.fecha_registro || '').replace(' ', 'T'));
+            return d >= desde && d <= hasta && k.tipo === movimiento;
+        }).map(k => [k.fecha_registro, k.consecutivo, k.tipo, k.producto_nombre, Number(k.cantidad || 0), k.documento || '-', k.registrado_por || '-']);
+    } else if (tipo === 'notas_credito') {
+        headers = ['Fecha','Nota de Crédito','Factura Origen','Cliente','Motivo','Estado','Monto EUR'];
+        rows = dataGlobal.notas_credito.filter(n => {
+            const d = new Date(String(n.fecha_registro || '').replace(' ', 'T'));
+            return d >= desde && d <= hasta;
+        }).map(n => [n.fecha_registro, n.consecutivo, n.consecutivo_origen, n.cliente_nombre, n.motivo, n.estado, Number(n.total_eur || 0)]);
+    } else if (tipo === 'clientes') {
+        headers = ['Registro','Documento','Cliente/Razon social','Teléfono','Correo','Ubicación','Estado','País'];
+        rows = dataGlobal.clientes.map(c => [c.fecha_registro, c.documento, c.nombre, c.telefono, c.correo, [c.municipio, c.estado].filter(Boolean).join(', '), c.estado, c.pais]);
+        filters = [];
+    } else if (tipo === 'proveedores') {
+        headers = ['Registro','Nombre','Tipo','Teléfono','Correo','Dirección'];
+        rows = dataGlobal.proveedores.map(p => [p.fecha_registro, p.nombre, p.tipo, p.telefono, p.correo, p.direccion]);
+        filters = [];
+    } else if (tipo === 'productos') {
+        headers = ['Código','Descripción','Unidad','Stock Mínimo','Precio USD','Estado'];
+        rows = dataGlobal.productos.map(p => [p.codigo_barras || '-', p.descripcion, p.unidad_medida, Number(p.stock_minimo || 0), Number(p.precio_usd || 0), p.estado]);
+        filters = [];
+    } else if (tipo === 'lista_precios') {
+        headers = ['Código','Producto','Categoría','Precio Obj USD','Precio Euro','Precio BS (Día)'];
+
+        // El módulo de Lista de precios carga estos datos bajo demanda. El usuario,
+        // sin embargo, puede entrar directamente a Reportes sin haber abierto ese módulo,
+        // por lo que dataGlobal.lista_precios_dinamica puede estar vacío.
+        // Para que el reporte sea independiente de la navegación previa, consultamos
+        // la misma fuente oficial de datos que utiliza el módulo de Lista de precios.
+        try {
+            const respuestaLista = await fetch('/api/lista_precios_data', {
+                cache: 'no-store',
+                credentials: 'same-origin'
+            });
+            if (!respuestaLista.ok) throw new Error('No se pudo consultar la lista de precios.');
+            const datosLista = await respuestaLista.json();
+            dataGlobal.lista_precios_dinamica = Array.isArray(datosLista.productos) ? datosLista.productos : [];
+            rows = dataGlobal.lista_precios_dinamica.map(p => [
+                p.codigo || '-',
+                p.descripcion,
+                p.categoria,
+                Number(p.precio_usd || 0),
+                Number(p.precio_eur || 0),
+                Number(p.precio_bs || 0)
+            ]);
+
+            if (datosLista.tasas?.fecha) {
+                filters = [`Fecha: ${formatearFechaTasa(datosLista.tasas.fecha)}`];
+            } else {
+                filters = [`Fecha: ${new Date().toLocaleDateString('es-VE')}`];
+            }
+        } catch (error) {
+            console.error('No se pudo cargar la lista de precios para el reporte:', error);
+            return alert('No se pudo cargar la lista de precios. Verifica la conexión e inténtalo nuevamente.');
+        }
+    } else if (tipo === 'existencias') {
+        headers = ['Código','Producto','Total Físico','Disp. para Venta','Costo Unit.','Total Invertido'];
+        rows = dataGlobal.existencias.map(e => [e.codigo_barras || '-', e.descripcion, Number(e.stock_fisico_total || 0), Number(e.stock_disponible_venta || 0), Number(e.costo_unit || 0), Number(e.total_costo || 0)]);
+    } else if (tipo === 'kardex') {
+        headers = ['Fecha / Hora','Consec.','Movimiento','Producto','Cant.','Origen','Destino','Resp.'];
+        const tipoMov = document.getElementById('rep_mov_tipo').value;
+        if (tipoMov && tipoMov !== 'TODOS') filters.push(`Movimiento: ${tipoMov}`);
+        rows = dataGlobal.kardex.filter(k => {
+            const d = new Date(String(k.fecha_registro || '').replace(' ', 'T'));
+            return d >= desde && d <= hasta && (tipoMov === 'TODOS' || k.tipo === tipoMov);
+        }).map(k => [k.fecha_registro, k.consecutivo, k.tipo, k.producto_nombre, Number(k.cantidad || 0), k.almacen_origen_nombre || '-', k.almacen_destino_nombre || '-', k.registrado_por || '-']);
+    } else if (tipo === 'tasas') {
+        headers = ['Fecha','Hora','Dólar BCV','Euro BCV','Binance','Brecha'];
+        rows = dataGlobal.tasas.filter(t => {
+            const d = new Date(String(t.fecha || '') + 'T00:00:00');
+            return d >= desde && d <= hasta;
+        }).map(t => [t.fecha, t.hora, Number(t.dolar_bcv || 0), Number(t.euro_bcv || 0), Number(t.binance || 0), Number((t.brecha || 0) * 100)]);
+    } else if (tipo === 'coberturas') {
+        headers = ['Fecha de Registro','Pico Máximo','% Cobertura','Factor','Estado'];
+        rows = dataGlobal.coberturas.map(c => [c.fecha_registro, c.fecha_pico_maximo, Number((c.porcentaje_cobertura || 0) * 100), Number(c.factor_proteccion || 0), c.estado]);
+        filters = [];
+    }
+
+    window.reporteActual = { tipo, titulo, headers, rows, filters };
+
     document.getElementById('rep_resultados_card').classList.remove('d-none');
-    document.getElementById('rep_titulo_tabla').innerText = `Reporte de ${tipo.toUpperCase().replace('_', ' ')}`;
-         
-    if(tipo === 'ventas') {
-        th.innerHTML = `<tr><th>Fecha / Hora</th><th>Nº Factura</th><th>Cliente</th><th>Monto EUR</th><th>Monto BS</th><th>Método de Pago</th><th>Usuario</th></tr>`;
-        let filtrado = dataGlobal.ventas.filter(v => { let d = new Date((v.fecha_facturacion || (v.fecha_registro || '').split(' ')[0]) + "T00:00:00"); return d >= desde && d <= hasta; });
-        filtrado.forEach(v => {
-            const fechaReporte = v.fecha_facturacion || (v.fecha_registro || '').split(' ')[0];
-            tb.innerHTML += `<tr><td>${fechaReporte}</td><td class="fw-bold">${v.consecutivo}</td><td>${v.cliente_nombre}</td><td>€ ${parseFloat(v.total_eur).toFixed(2)}</td><td>Bs ${parseFloat(v.total_bs || 0).toFixed(2)}</td><td>${v.metodo_pago||'-'}</td><td>${v.registrado_por}</td></tr>`;
+    document.getElementById('rep_titulo_tabla').innerText = titulo;
+    reporteHtmlTabla(headers, rows);
+};
+
+function reporteExcelAncho(header, rows) {
+    const maxLen = Math.max(
+        String(header || '').length,
+        ...rows.slice(0, 80).map(v => String(v ?? '').length)
+    );
+    const h = String(header || '').toUpperCase();
+    if (/DIRECCIÓN|CORREO|PRODUCTO|CLIENTE|DESCRIPCIÓN|REFERENCIA|COORDENADAS|MOTIVO/.test(h)) return Math.min(34, Math.max(16, maxLen * 1.05));
+    if (/FECHA|HORA/.test(h)) return 15;
+    if (/CÓDIGO|CODIGO|CANT|PRECIO|TOTAL|MONTO|EURO|USD|BS|FACTOR|%/.test(h)) return Math.min(18, Math.max(11, maxLen * 1.05));
+    return Math.min(24, Math.max(13, maxLen * 1.0));
+}
+
+async function exportarReporteExcel() {
+    const r = window.reporteActual;
+    if (!r || !r.headers?.length) return alert('Primero carga los datos del reporte.');
+    if (typeof ExcelJS === 'undefined') return alert('No se pudo cargar el motor de Excel. Recarga la página e inténtalo de nuevo.');
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = 'ZUARA';
+    wb.lastModifiedBy = 'ZUARA';
+    wb.created = new Date();
+    wb.modified = new Date();
+
+    const ws = wb.addWorksheet('Reporte', {
+        views: [{ showGridLines: false, state: 'frozen', ySplit: 4 }]
+    });
+
+    const colCount = r.headers.length;
+    const lastCol = (() => { let n = colCount, s = ''; while (n) { const r = (n - 1) % 26; s = String.fromCharCode(65 + r) + s; n = Math.floor((n - 1) / 26); } return s; })();
+    ws.mergeCells(`A1:${lastCol}1`);
+    const brandCell = ws.getCell('A1');
+    brandCell.value = 'ZUARA';
+    brandCell.font = { name: 'Arial', size: 18, bold: true, color: { argb: 'FF111111' } };
+    brandCell.alignment = { horizontal: 'left', vertical: 'middle' };
+    ws.getRow(1).height = 27;
+
+    ws.mergeCells(`A2:${lastCol}2`);
+    const reportNameCell = ws.getCell('A2');
+    reportNameCell.value = r.titulo;
+    reportNameCell.font = { name: 'Arial', size: 12, bold: true, color: { argb: 'FF333333' } };
+    reportNameCell.alignment = { horizontal: 'left', vertical: 'middle' };
+    ws.getRow(2).height = 21;
+
+    ws.mergeCells(`A3:${lastCol}3`);
+    const filterCell = ws.getCell('A3');
+    filterCell.value = r.filters.length ? r.filters.join('    |    ') : 'Sin filtros de fecha';
+    filterCell.font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FF666666' } };
+    filterCell.alignment = { horizontal: 'left', vertical: 'middle' };
+    ws.getRow(3).height = 19;
+
+    const headerRow = ws.getRow(4);
+    r.headers.forEach((header, i) => {
+        const cell = headerRow.getCell(i + 1);
+        cell.value = header;
+        cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF111111' } };
+        cell.alignment = { horizontal: reporteAlineacion(header), vertical: 'middle', wrapText: true };
+        cell.border = {};
+    });
+    headerRow.height = 28;
+
+    r.rows.forEach((row, ri) => {
+        const excelRow = ws.addRow(row);
+        excelRow.height = 20;
+        row.forEach((value, ci) => {
+            const cell = excelRow.getCell(ci + 1);
+            const header = r.headers[ci];
+            cell.font = { name: 'Arial', size: 10, color: { argb: 'FF222222' } };
+            cell.alignment = { horizontal: reporteAlineacion(header), vertical: 'middle', wrapText: /PRODUCTO|CLIENTE|DIRECCIÓN|CORREO|MOTIVO|REFERENCIA|COORDENADAS/.test(String(header).toUpperCase()) };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ri % 2 === 0 ? 'FFFFFFFF' : 'FFF3F3F3' } };
+            if (typeof value === 'number') {
+                const h = String(header).toUpperCase();
+                if (/CANT/.test(h)) cell.numFmt = '#,##0.##';
+                else if (/%/.test(h)) cell.numFmt = '0.00"%"';
+                else if (/USD/.test(h)) cell.numFmt = '$ #,##0.00';
+                else if (/BS/.test(h)) cell.numFmt = '"Bs " #,##0.00';
+                else if (/EURO|MONTO|PRECIO|TOTAL|COSTO/.test(h)) cell.numFmt = '€ #,##0.00';
+                else cell.numFmt = '#,##0.##';
+            }
         });
+    });
+
+    ws.autoFilter = { from: 'A4', to: `${lastCol}4` };
+    ws.columns.forEach((column, ci) => {
+        column.width = reporteExcelAncho(r.headers[ci], r.rows.map(row => row[ci]));
+    });
+
+    const orientation = colCount <= 6 ? 'portrait' : 'landscape';
+    const paperSize = colCount > 10 ? 8 : 9; // A3 para reportes muy anchos; A4 para el resto.
+    ws.pageSetup = {
+        orientation,
+        paperSize,
+        fitToPage: true,
+        fitToWidth: 1,
+        fitToHeight: 0,
+        horizontalCentered: true,
+        verticalCentered: false,
+        showGridLines: false,
+        margins: { left: 0.3, right: 0.3, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 },
+        printTitlesRow: '1:4'
+    };
+    ws.pageSetup.printArea = `A1:${lastCol}${Math.max(4, r.rows.length + 4)}`;
+    ws.headerFooter.oddFooter = '&LZUARA&RPágina &P de &N';
+
+    const safeName = (r.titulo || 'Reporte').replace(/[^a-z0-9áéíóúñ _-]/gi, '').trim().replace(/\s+/g, '_');
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `ZUARA_${safeName}_${new Date().toISOString().slice(0,10)}.xlsx`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+function reportePdfConfig(colCount) {
+    if (colCount <= 6) return { orientation: 'portrait', format: 'letter', margin: 8, fontSize: 8.5 };
+    if (colCount <= 10) return { orientation: 'landscape', format: 'letter', margin: 7, fontSize: 7.2 };
+    return { orientation: 'landscape', format: 'a3', margin: 8, fontSize: 6.2 };
+}
+
+function exportarReportePDF() {
+    const r = window.reporteActual;
+    if (!r || !r.headers?.length) return alert('Primero carga los datos del reporte.');
+    const { jsPDF } = window.jspdf;
+    const cfg = reportePdfConfig(r.headers.length);
+    const doc = new jsPDF({ orientation: cfg.orientation, unit: 'mm', format: cfg.format, compress: true });
+    const pageWidth = doc.internal.pageSize.getWidth();
+
+    const filters = r.filters.length ? r.filters.join('    |    ') : '';
+    const safeRows = r.rows.map(row => row.map((v, i) => reporteMostrarValor(v, r.headers[i])));
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(17);
+    doc.setTextColor(17, 17, 17);
+    doc.text('ZUARA', cfg.margin, 12);
+
+    doc.setFontSize(10.5);
+    doc.setTextColor(55, 55, 55);
+    doc.text(r.titulo, cfg.margin, 18);
+
+    if (filters) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        doc.setTextColor(100, 100, 100);
+        doc.text(filters, cfg.margin, 23);
     }
-    else if(tipo === 'devoluciones_venta') {
-        th.innerHTML = `<tr><th>Fecha</th><th>Consecutivo</th><th>Movimiento</th><th>Producto</th><th>Cant. Devuelta</th><th>Doc. Afectado</th><th>Resp.</th></tr>`;        let filtrado = dataGlobal.kardex.filter(k => { let d = new Date(k.fecha_registro); return d >= desde && d <= hasta && k.tipo === 'Devolución por venta'; });
-        filtrado.forEach(k => { tb.innerHTML += `<tr><td>${k.fecha_registro}</td><td class="fw-bold">${k.consecutivo}</td><td>${k.tipo}</td><td>${k.producto_nombre}</td><td>${k.cantidad}</td><td>${k.documento}</td><td>${k.registrado_por}</td></tr>`; });
-    }
-    else if(tipo === 'devoluciones_compra') {
-        th.innerHTML = `<tr><th>Fecha</th><th>Consecutivo</th><th>Movimiento</th><th>Producto</th><th>Cant. Devuelta</th><th>Doc. Afectado</th><th>Resp.</th></tr>`;
-        let filtrado = dataGlobal.kardex.filter(k => { let d = new Date(k.fecha_registro); return d >= desde && d <= hasta && k.tipo === 'Devolución por compra'; });
-        filtrado.forEach(k => { tb.innerHTML += `<tr><td>${k.fecha_registro}</td><td class="fw-bold">${k.consecutivo}</td><td>${k.tipo}</td><td>${k.producto_nombre}</td><td>${k.cantidad}</td><td>${k.documento}</td><td>${k.registrado_por}</td></tr>`; });
-    }
-    else if(tipo === 'notas_credito') {
-        th.innerHTML = `<tr><th>Fecha</th><th>Nota de Crédito</th><th>Factura Origen</th><th>Cliente</th><th>Motivo</th><th>Estado</th><th>Monto EUR</th></tr>`;
-        let filtrado = dataGlobal.notas_credito.filter(n => { let d = new Date(n.fecha_registro); return d >= desde && d <= hasta; });
-        filtrado.forEach(n => { tb.innerHTML += `<tr><td>${n.fecha_registro}</td><td class="fw-bold">${n.consecutivo}</td><td>${n.consecutivo_origen}</td><td>${n.cliente_nombre}</td><td>${n.motivo}</td><td>${n.estado}</td><td>€ ${parseFloat(n.total_eur).toFixed(2)}</td></tr>`; });
-    }
-    else if(tipo === 'clientes') {
-        th.innerHTML = `<tr><th>Registro</th><th>Documento</th><th>Nombre</th><th>Teléfono</th><th>Correo</th><th>Ubicación</th></tr>`;
-        dataGlobal.clientes.forEach(c => { tb.innerHTML += `<tr><td>${c.fecha_registro}</td><td class="fw-bold">${c.documento}</td><td>${c.nombre}</td><td>${c.telefono}</td><td>${c.correo}</td><td>${c.estado}, ${c.municipio}</td></tr>`; });
-    }
-    else if(tipo === 'proveedores') {
-        th.innerHTML = `<tr><th>Registro</th><th>Nombre</th><th>Tipo</th><th>Teléfono</th><th>Correo</th><th>Dirección</th></tr>`;
-        dataGlobal.proveedores.forEach(p => { tb.innerHTML += `<tr><td>${p.fecha_registro}</td><td class="fw-bold">${p.nombre}</td><td>${p.tipo}</td><td>${p.telefono}</td><td>${p.correo}</td><td>${p.direccion}</td></tr>`; });
-    }
-    else if(tipo === 'productos') {
-        th.innerHTML = `<tr><th>Código</th><th>Descripción</th><th>Unidad</th><th>Stock Mínimo</th><th>Precio USD</th><th>Estado</th></tr>`;
-        dataGlobal.productos.forEach(p => { tb.innerHTML += `<tr><td class="fw-bold">${p.codigo_barras||'-'}</td><td>${p.descripcion}</td><td>${p.unidad_medida}</td><td>${p.stock_minimo}</td><td>$${parseFloat(p.precio_usd).toFixed(2)}</td><td>${p.estado}</td></tr>`; });
-    }
-    else if(tipo === 'kardex') {
-        th.innerHTML = `<tr><th>Fecha / Hora</th><th>Consec.</th><th>Movimiento</th><th>Producto</th><th>Cant.</th><th>Origen</th><th>Destino</th><th>Resp.</th></tr>`;
-        let tipoMov = document.getElementById('rep_mov_tipo').value;
-        let filtrado = dataGlobal.kardex.filter(k => { 
-             let d = new Date(k.fecha_registro); 
-             return d >= desde && d <= hasta && (tipoMov === 'TODOS' || k.tipo === tipoMov); 
-        });
-        filtrado.forEach(k => {
-            tb.innerHTML += `<tr><td>${k.fecha_registro}</td><td class="fw-bold">${k.consecutivo}</td><td>${k.tipo}</td><td class="text-truncate" style="max-width:100px;">${k.producto_nombre}</td><td>${k.cantidad}</td><td>${k.almacen_origen_nombre||'-'}</td><td>${k.almacen_destino_nombre||'-'}</td><td>${k.registrado_por}</td></tr>`;
-        });
-    }
-    else if(tipo === 'lista_precios') {
-        th.innerHTML = `<tr><th>Código</th><th>Producto</th><th>Categoría</th><th>Precio Obj USD</th><th>Precio Euro</th><th>Precio BS (Día)</th></tr>`;
-        dataGlobal.lista_precios_dinamica.forEach(p => {
-            tb.innerHTML += `<tr><td>${p.codigo||'-'}</td><td>${p.descripcion}</td><td>${p.categoria}</td><td>$${p.precio_usd.toFixed(2)}</td><td>€ ${p.precio_eur.toFixed(2)}</td><td>Bs ${p.precio_bs.toFixed(2)}</td></tr>`;
-        });
-    }
-    else if(tipo === 'existencias') {
-        th.innerHTML = `<tr><th>Código</th><th>Producto</th><th>Total Físico</th><th>Disp. para Venta</th><th>Costo Unit.</th><th>Total Invertido</th></tr>`;
-        dataGlobal.existencias.forEach(e => {
-            tb.innerHTML += `<tr><td>${e.codigo_barras||'-'}</td><td>${e.descripcion}</td><td>${e.stock_fisico_total}</td><td>${e.stock_disponible_venta}</td><td>$${parseFloat(e.costo_unit).toFixed(2)}</td><td>$${parseFloat(e.total_costo).toFixed(2)}</td></tr>`;
-        });
-    }
-    else if(tipo === 'tasas') {
-        th.innerHTML = `<tr><th>Fecha</th><th>Hora</th><th>Dólar BCV</th><th>Euro BCV</th><th>Binance</th><th>Brecha</th></tr>`;
-        let filtrado = dataGlobal.tasas.filter(t => { let d = new Date(t.fecha+"T00:00:00"); return d >= desde && d <= hasta; });
-        filtrado.forEach(t => { tb.innerHTML += `<tr><td>${t.fecha}</td><td>${t.hora}</td><td>${t.dolar_bcv}</td><td>${t.euro_bcv}</td><td>${t.binance}</td><td>${(t.brecha*100).toFixed(2)}%</td></tr>`; });
-    }
-    else if(tipo === 'coberturas') {
-        th.innerHTML = `<tr><th>Fecha de Registro</th><th>Pico Máximo</th><th>% Cobertura</th><th>Factor</th><th>Estado</th></tr>`;
-        dataGlobal.coberturas.forEach(c => { tb.innerHTML += `<tr><td>${c.fecha_registro}</td><td>${c.fecha_pico_maximo}</td><td>${(c.porcentaje_cobertura*100).toFixed(2)}%</td><td>${c.factor_proteccion}</td><td>${c.estado}</td></tr>`; });
-    }
+
+    doc.autoTable({
+        head: [r.headers],
+        body: safeRows,
+        startY: filters ? 27 : 23,
+        margin: { left: cfg.margin, right: cfg.margin, top: filters ? 27 : 23, bottom: 10 },
+        tableWidth: 'auto',
+        theme: 'plain',
+        styles: {
+            font: 'helvetica',
+            fontSize: cfg.fontSize,
+            cellPadding: r.headers.length > 12 ? 1.2 : 1.8,
+            textColor: [30,30,30],
+            lineWidth: 0,
+            overflow: 'linebreak',
+            valign: 'middle'
+        },
+        headStyles: {
+            fillColor: [17,17,17],
+            textColor: [255,255,255],
+            fontStyle: 'bold',
+            fontSize: Math.max(5.5, cfg.fontSize),
+            halign: 'center',
+            cellPadding: 2
+        },
+        alternateRowStyles: {
+            fillColor: [245,245,245]
+        },
+        bodyStyles: {
+            fillColor: [255,255,255]
+        },
+        columnStyles: Object.fromEntries(r.headers.map((h,i) => [i, { halign: reporteAlineacion(h) } ])),
+        showHead: 'everyPage',
+        pageBreak: 'auto',
+        rowPageBreak: 'avoid',
+        didDrawPage: function(data) {
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7);
+            doc.setTextColor(120,120,120);
+            doc.text('ZUARA', cfg.margin, doc.internal.pageSize.getHeight() - 5);
+            doc.text(`Página ${doc.internal.getNumberOfPages()}`, pageWidth - cfg.margin - 20, doc.internal.pageSize.getHeight() - 5);
+        }
+    });
+
+    const safeName = (r.titulo || 'Reporte').replace(/[^a-z0-9áéíóúñ _-]/gi, '').trim().replace(/\s+/g, '_');
+    doc.save(`ZUARA_${safeName}_${new Date().toISOString().slice(0,10)}.pdf`);
 }
 
 window.exportarReporte = function(formato) {
     if (!exigirPermiso('reportes')) return;
-    let tipo = document.getElementById('rep_tipo').value;
-    let filename = `Reporte_${tipo}_${new Date().toLocaleDateString()}.` + (formato==='excel'?'xlsx':'pdf');
-         
-    if(formato === 'excel') {
-        let table = document.getElementById("tabla-reporte-dinamica");
-        let wb = XLSX.utils.table_to_book(table, {sheet: "Reporte"});
-        
-        let ws = wb.Sheets["Reporte"];
-        const range = XLSX.utils.decode_range(ws['!ref']);
-        const wscols = [];
-        for (let C = range.s.c; C <= range.e.c; ++C) {
-            let max_width = 12; 
-            for (let R = range.s.r; R <= range.e.r; ++R) {
-                const cell = ws[XLSX.utils.encode_cell({r: R, c: C})];
-                if (!cell || !cell.v) continue;
-                const len = cell.v.toString().length;
-                if (len > max_width) max_width = len;
-            }
-            wscols.push({wch: max_width + 2});
-        }
-        ws['!cols'] = wscols;
-        
-        XLSX.writeFile(wb, filename);
-    } 
-    else if(formato === 'pdf') {
-        const { jsPDF } = window.jspdf;
-        const doc = new jsPDF();
-        doc.text(document.getElementById('rep_titulo_tabla').innerText, 14, 15);
-        doc.autoTable({ html: '#tabla-reporte-dinamica', startY: 20 });
-        doc.save(filename);
-    }
-}
+    if (formato === 'excel') return exportarReporteExcel();
+    if (formato === 'pdf') return exportarReportePDF();
+};
 
 // ---------------- RESTO DEL CÓDIGO (Consulta Histórica) ---------------- //
 window.buscarListaPreciosHistorica = async function() {
@@ -1974,8 +2423,15 @@ window.addEventListener('load', async () => {
         const campo = document.getElementById('v_fecha_facturacion');
         if (campo) {
             campo.value = fechaHoyLocal();
-            campo.addEventListener('change', function () {
+            campo.addEventListener('change', async function () {
                 if (typeof actualizarNomenclatura === 'function') actualizarNomenclatura();
+                // La fecha puede cambiar después de haber abierto la Nota de Entrega.
+                // En ese caso hay que volver a consultar la tasa de ESA fecha.
+                try {
+                    await prepararVenta();
+                } catch (error) {
+                    console.error('No se pudo actualizar la tasa de la fecha seleccionada:', error);
+                }
             });
         }
     }
