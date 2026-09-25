@@ -81,8 +81,8 @@ body {
 
 .btn-action { width: 35px; height: 35px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; border: none; transition: 0.2s cubic-bezier(0.2, 0, 0, 1); }
 .btn-action:hover { transform: scale(1.15); }
-.btn-edit { background: rgba(212, 175, 55, 0.14); color: #9a7410; }
-.btn-edit:hover { background: #d4af37; color: #111; }
+.btn-edit { background: var(--theme-light); color: #795b20; }
+.btn-edit:hover { background: #b08a3c; color: #111; }
 .btn-delete { background: rgba(255, 59, 48, 0.1); color: #ff3b30; }
 .btn-delete:hover { background: #ff3b30; color: white; }
 
@@ -114,8 +114,8 @@ body {
 .list-group-item.active .sidebar-bubble { color: #b8860b; }
 .title-bubble, .card-bubble { background: rgba(212,175,55,0.12); }
 .ios-input:focus, .ios-input-group:focus-within { border-color: #b08a3c; box-shadow: 0 0 0 4px rgba(176,138,60,0.12); }
-.btn-action.btn-edit { background: rgba(212,175,55,0.14); color: #9a7410; }
-.btn-action.btn-edit:hover { background: #d4af37; color: #111; }
+.btn-action.btn-edit { background: var(--theme-light); color: #795b20; }
+.btn-action.btn-edit:hover { background: #b08a3c; color: #111; }
 
 /* Responsive de trabajo: tablas legibles, nombres completos y controles cómodos. */
 .table-responsive {
