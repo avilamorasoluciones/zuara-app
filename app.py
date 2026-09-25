@@ -556,6 +556,10 @@ def api_kardex():
 
 @app.route('/api/ventas', methods=['GET', 'POST'])
 def api_ventas():
+    if request.method == 'POST' and not tiene_permiso_en_sesion('ventas'):
+        return respuesta_sin_permiso()
+    if request.method == 'GET' and not requiere_alguno_de_permisos('historial_ventas', 'reportes'):
+        return respuesta_sin_permiso()
     usuario_actual = session.get('nombre', 'Sistema')
     conn = get_db_connection()
     try:
