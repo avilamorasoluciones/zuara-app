@@ -7,11 +7,12 @@ from psycopg2 import pool  # <-- IMPORTACIÓN DEL POOL AGREGADA
 import datetime
 from zoneinfo import ZoneInfo
 import json
+import secrets
 from decimal import Decimal, ROUND_HALF_UP
 
 app = Flask(__name__)
 # Llave secreta necesaria para manejar las sesiones de los usuarios
-app.secret_key = os.environ.get('SECRET_KEY', 'super-secret-key-dashboard-2024')
+app.secret_key = os.environ.get('SECRET_KEY') or secrets.token_hex(32)
 
 # --- CONFIGURACIÓN DE SESIONES PARA LA NUBE (RENDER) ---
 app.config['SESSION_COOKIE_SECURE'] = True      # Obligatorio para HTTPS en Render
@@ -111,6 +112,14 @@ def init_db():
         safe_alter(conn, "ALTER TABLE ventas ADD COLUMN fecha_facturacion TEXT DEFAULT ''")
         conn.execute("UPDATE ventas SET fecha_facturacion = split_part(fecha_registro, ' ', 1) WHERE COALESCE(fecha_facturacion, '') = ''")
         safe_alter(conn, "ALTER TABLE ventas ADD COLUMN total_bs REAL DEFAULT 0")
+        # Snapshot de los datos de la nota de entrega para que los reportes históricos
+        # conserven exactamente la información utilizada al momento de facturar.
+        columnas_venta_snapshot = [
+            'cliente_documento', 'cliente_correo', 'pais', 'estado_cliente',
+            'punto_referencia', 'coordenadas', 'tipo_envio'
+        ]
+        for col in columnas_venta_snapshot:
+            safe_alter(conn, f"ALTER TABLE ventas ADD COLUMN {col} TEXT DEFAULT ''")
         safe_alter(conn, "ALTER TABLE notas_credito ADD COLUMN saldo_usado_eur REAL DEFAULT 0")
         safe_alter(conn, "ALTER TABLE notas_credito ADD COLUMN estado TEXT DEFAULT 'DISPONIBLE'")
 
@@ -207,6 +216,74 @@ def es_ultimo_administrador_activo(conn, usuario_id):
     cantidad = conn.execute('SELECT COUNT(*) FROM usuarios WHERE es_admin = TRUE AND activo = TRUE').fetchone()[0]
     return cantidad <= 1
 
+    
+# --- CONTROL CENTRALIZADO DE ACCESO (SERVIDOR) ---
+def requiere_alguno_de_permisos(*permisos):
+    return any(tiene_permiso_en_sesion(p) for p in permisos)
+
+def exigir_sesion():
+    if not session.get('usuario_id'):
+        return respuesta_sesion_no_valida()
+    return None
+
+def respuesta_sesion_no_valida():
+    return jsonify({'error': 'Sesión no válida o expirada.'}), 401
+
+def permisos_crud(tabla, metodo):
+    if tabla == 'usuarios':
+        return ('usuarios',) if es_administrador_actual() else ()
+    if tabla == 'tasas':
+        return ('parametros',) if metodo != 'POST' else ('parametros', 'agregar_tasa')
+    if tabla == 'coberturas':
+        return ('parametros',)
+    if tabla == 'ventas':
+        return ('historial_ventas', 'reportes') if metodo == 'GET' else ('historial_ventas',)
+    if tabla in {'clientes', 'proveedores', 'almacenes', 'categorias', 'productos'}:
+        return (tabla, 'reportes') if metodo == 'GET' else (tabla,)
+    if tabla == 'notas_credito':
+        return ('historial_ventas', 'reportes') if metodo == 'GET' else ('historial_ventas',)
+    return ()
+
+def proteger_endpoint(*permisos):
+    return requiere_alguno_de_permisos(*permisos)
+
+@app.before_request
+def sincronizar_sesion_desde_servidor():
+    # El login/sesión/logout se encargan de su propio flujo.
+    if not request.path.startswith('/api/') or request.path.startswith('/api/auth/'):
+        return None
+    if not session.get('usuario_id'):
+        return None
+
+    conn = None
+    try:
+        conn = get_db_connection()
+        row = conn.execute(
+            'SELECT id, nombre, usuario, activo, es_admin, permisos FROM usuarios WHERE id = ?',
+            (session.get('usuario_id'),)
+        ).fetchone()
+        if not row or not row['activo']:
+            session.clear()
+            return respuesta_sesion_no_valida()
+
+        try:
+            permisos = json.loads(row['permisos']) if row['permisos'] else []
+        except (TypeError, ValueError):
+            permisos = []
+
+        session['usuario_id'] = row['id']
+        session['nombre'] = row['nombre']
+        session['usuario'] = row['usuario']
+        session['es_admin'] = bool(row['es_admin'])
+        session['permisos'] = permisos
+        return None
+    except Exception:
+        app.logger.exception('No se pudo validar la sesión contra la base de datos.')
+        return jsonify({'error': 'No se pudo validar la sesión. Inténtalo de nuevo.'}), 503
+    finally:
+        if conn:
+            conn.close()
+
 # ----------------- RUTAS DE SESIÓN Y AUTENTICACIÓN -----------------
 
 @app.route('/api/auth/login', methods=['POST'])
@@ -242,9 +319,9 @@ def api_login():
             return jsonify({'error': 'Usuario o contraseña inválidos.'}), 401
         finally:
             conn.close()
-    except Exception as e:
-        # Si ocurre CUALQUIER error interno, ahora lo mostrará en tu pantalla
-        return jsonify({'error': f"Error interno detectado: {str(e)}"}), 500
+    except Exception:
+        app.logger.exception('Error interno durante el inicio de sesión.')
+        return jsonify({'error': 'No fue posible completar el inicio de sesión.'}), 500
 
 @app.route('/api/auth/sesion', methods=['GET'])
 def api_sesion():
@@ -275,6 +352,8 @@ def index():
 
 @app.route('/api/resumen', methods=['GET'])
 def api_resumen():
+    if not session.get('usuario_id'):
+        return respuesta_sesion_no_valida()
     conn = get_db_connection()
     try:
         c = conn.execute('SELECT COUNT(*) FROM clientes').fetchone()[0]
@@ -284,11 +363,15 @@ def api_resumen():
         pend_clientes = conn.execute("SELECT COUNT(*) FROM clientes WHERE documento = 'PENDIENTE' OR documento = ''").fetchone()[0]
         pend_stock = conn.execute("SELECT COUNT(*) FROM productos p WHERE (COALESCE((SELECT SUM(cantidad) FROM movimientos WHERE producto_id = p.id AND tipo IN ('Inventario Inicial', 'Compra', 'Devolución por venta', 'Ajuste administrativo - Entrada')), 0) - COALESCE((SELECT SUM(cantidad) FROM movimientos WHERE producto_id = p.id AND tipo IN ('Venta', 'Descarga por daño/motivo', 'Devolución por compra', 'Ajuste administrativo - Salida')), 0)) <= p.stock_minimo").fetchone()[0]
         return jsonify({'conteo': {'clientes': c, 'proveedores': p, 'productos': prod, 'ventas': v}, 'notificaciones': {'clientes_pendientes': pend_clientes, 'stock_bajo': pend_stock}})
-    except Exception as e: return jsonify({'error': str(e)}), 500
+    except Exception:
+        app.logger.exception('Error interno de API.')
+        return jsonify({'error': 'Error interno del servidor.'}), 500
     finally: conn.close()
 
 @app.route('/api/configuracion', methods=['GET', 'POST'])
 def api_configuracion():
+    if not session.get('usuario_id'):
+        return respuesta_sesion_no_valida()
     conn = get_db_connection()
     try:
         if request.method == 'POST':
@@ -310,6 +393,8 @@ def api_configuracion():
 
 @app.route('/api/stock_almacenes/<int:producto_id>', methods=['GET'])
 def api_stock_almacenes(producto_id):
+    if not requiere_alguno_de_permisos('ventas', 'existencias', 'productos', 'reportes'):
+        return respuesta_sin_permiso()
     conn = get_db_connection()
     try:
         query = "SELECT a.id, a.nombre, COALESCE(SUM(CASE WHEN m.almacen_destino_id = a.id AND m.tipo IN ('Inventario Inicial', 'Compra', 'Traspaso', 'Devolución por venta', 'Ajuste administrativo - Entrada') THEN m.cantidad ELSE 0 END), 0) - COALESCE(SUM(CASE WHEN m.almacen_origen_id = a.id AND m.tipo IN ('Traspaso', 'Descarga por daño/motivo', 'Devolución por compra', 'Ajuste administrativo - Salida') THEN m.cantidad ELSE 0 END), 0) as stock FROM almacenes a LEFT JOIN movimientos m ON (a.id = m.almacen_destino_id OR m.almacen_origen_id = a.id) AND m.producto_id = ? GROUP BY a.id"
@@ -415,6 +500,8 @@ def corregir_ultima_carga(producto_id):
 
 @app.route('/api/existencias', methods=['GET'])
 def api_existencias():
+    if not requiere_alguno_de_permisos('existencias', 'ventas', 'reportes'):
+        return respuesta_sin_permiso()
     conn = get_db_connection()
     try:
         query = '''
@@ -444,6 +531,8 @@ def api_existencias():
 
 @app.route('/api/kardex', methods=['GET'])
 def api_kardex():
+    if not requiere_alguno_de_permisos('kardex', 'reportes'):
+        return respuesta_sin_permiso()
     conn = get_db_connection()
     try:
         data = conn.execute('''SELECT m.*, COALESCE(p.descripcion, 'Producto Eliminado') as producto_nombre, 
@@ -546,8 +635,18 @@ def api_ventas():
                 estado_nc = 'APLICADA' if saldo_usado_eur >= float(nota_credito['total_eur'] or 0) - 0.0001 else 'DISPONIBLE'
                 conn.execute('''UPDATE notas_credito SET saldo_usado_eur = ?, saldo_usado_bs = ?, estado = ? WHERE id = ?''',
                              (saldo_usado_eur, saldo_usado_bs, estado_nc, nc_id))
-            conn.execute('INSERT INTO ventas (consecutivo, fecha_registro, fecha_facturacion, cliente_nombre, cliente_telefono, direccion_entrega, total_eur, total_bs, tasa_bcv_euro_aplicada, tasa_binance_aplicada, porcentaje_brecha_aplicado, estado, registrado_por, metodo_pago) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-                          (consec_venta, ahora, fecha_facturacion, c_nombre, d.get('cliente_telefono',''), d.get('env_direccion',''), total_eur, total_bs, tasa_euro_sistema, tasa_binance_sistema, brecha_sistema, d.get('estado_semaforo','EMITIDA'), usuario_actual, d.get('metodo_pago', '')))
+            conn.execute('INSERT INTO ventas (consecutivo, fecha_registro, fecha_facturacion, cliente_nombre, cliente_telefono, cliente_documento, cliente_correo, pais, estado_cliente, direccion_entrega, punto_referencia, coordenadas, tipo_envio, total_eur, total_bs, tasa_bcv_euro_aplicada, tasa_binance_aplicada, porcentaje_brecha_aplicado, estado, registrado_por, metodo_pago) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                          (
+                              consec_venta, ahora, fecha_facturacion, c_nombre,
+                              d.get('cliente_telefono',''), d.get('cliente_doc',''),
+                              d.get('cliente_correo',''), d.get('env_pais','Venezuela'),
+                              d.get('env_estado',''), d.get('env_direccion',''),
+                              d.get('env_referencia',''), d.get('env_coordenadas',''),
+                              d.get('env_tipo',''), total_eur, total_bs,
+                              tasa_euro_sistema, tasa_binance_sistema, brecha_sistema,
+                              d.get('estado_semaforo','EMITIDA'), usuario_actual,
+                              d.get('metodo_pago', '')
+                          ))
             ult_mov = conn.execute('SELECT id FROM movimientos ORDER BY id DESC LIMIT 1').fetchone()
             num_m = (ult_mov[0] + 1) if ult_mov else 1
             hora_movimiento = ahora.split(' ', 1)[1] if ' ' in ahora else '00:00:00'
@@ -570,6 +669,8 @@ def api_ventas():
 
 @app.route('/api/ventas/detalles/<consecutivo>', methods=['GET'])
 def get_detalles_venta(consecutivo):
+    if not requiere_alguno_de_permisos('ventas', 'historial_ventas', 'reportes'):
+        return respuesta_sin_permiso()
     conn = get_db_connection()
     try:
         query = '''SELECT d.*, COALESCE(p.descripcion, 'Producto Eliminado') as producto_nombre, p.codigo_barras as codigo
@@ -581,6 +682,8 @@ def get_detalles_venta(consecutivo):
 
 @app.route('/api/clientes/notas_credito/<cliente_nombre>', methods=['GET'])
 def get_notas_credito_cliente(cliente_nombre):
+    if not requiere_alguno_de_permisos('ventas', 'historial_ventas'):
+        return respuesta_sin_permiso()
     conn = get_db_connection()
     try:
         query = "SELECT * FROM notas_credito WHERE cliente_nombre = ? AND estado = 'DISPONIBLE'"
@@ -590,6 +693,8 @@ def get_notas_credito_cliente(cliente_nombre):
 
 @app.route('/api/devoluciones', methods=['POST'])
 def registrar_devolucion():
+    if not tiene_permiso_en_sesion('historial_ventas'):
+        return respuesta_sin_permiso()
     usuario_actual = session.get('nombre', 'Sistema')
     conn = get_db_connection()
     try:
@@ -661,6 +766,8 @@ def registrar_devolucion():
 
 @app.route('/api/notas_credito/detalles/<consecutivo_nc>', methods=['GET'])
 def get_detalles_nota_credito(consecutivo_nc):
+    if not requiere_alguno_de_permisos('historial_ventas', 'reportes'):
+        return respuesta_sin_permiso()
     conn = get_db_connection()
     try:
         query = '''SELECT d.*, COALESCE(p.descripcion, 'Producto Eliminado') as producto_nombre, p.codigo_barras as codigo
@@ -672,6 +779,8 @@ def get_detalles_nota_credito(consecutivo_nc):
 
 @app.route('/api/lista_precios_data', methods=['GET'])
 def api_lista_precios_data():
+    if not requiere_alguno_de_permisos('lista_precios', 'ventas', 'reportes'):
+        return respuesta_sin_permiso()
     conn = get_db_connection()
     try:
         # Las tasas y la facturación operan con la fecha local de Venezuela/Colombia,
@@ -720,6 +829,8 @@ def api_lista_precios_data():
 
 @app.route('/api/historico_precios/<fecha>', methods=['GET'])
 def get_historico_precios(fecha):
+    if not requiere_alguno_de_permisos('lista_precios', 'reportes'):
+        return respuesta_sin_permiso()
     conn = get_db_connection()
     try:
         data = conn.execute("SELECT json_data FROM historico_precios_dia WHERE fecha = ?", (fecha,)).fetchone()
@@ -809,6 +920,9 @@ def api_tabla_id(tabla, id):
     return api_crud(tabla, request, id)
 
 def api_crud(tabla, request, id=None):
+    permisos_requeridos = permisos_crud(tabla, request.method)
+    if not permisos_requeridos or not requiere_alguno_de_permisos(*permisos_requeridos):
+        return respuesta_sin_permiso()
     conn = get_db_connection()
     usuario_actual = session.get('nombre', 'Sistema')
     try:
@@ -838,7 +952,7 @@ def api_crud(tabla, request, id=None):
             elif tabla_db == 'historico_tasas': 
                 query = 'SELECT * FROM historico_tasas ORDER BY fecha DESC, hora DESC'
             elif tabla_db == 'usuarios':
-                query = 'SELECT id, nombre, usuario, activo, es_admin, permisos, protegido, fecha_registro FROM usuarios ORDER BY id ASC'
+                query = 'SELECT id, nombre, usuario, activo, es_admin, permisos, protegido, fecha_registro FROM usuarios WHERE protegido = FALSE ORDER BY id ASC'
                 
             data = conn.execute(query).fetchall()
             return jsonify([dict(ix) for ix in data])
@@ -866,6 +980,19 @@ def api_crud(tabla, request, id=None):
                     return jsonify({'error': 'La fecha de la tasa no es válida. Selecciona una fecha real en formato DD/MM/AAAA.'}), 400
                 binance = safe_float(d.get('binance'))
                 euro = safe_float(d.get('euro_bcv'))
+
+                # Protección de segunda capa contra duplicados exactos.
+                # Se permite registrar varias tasas el mismo día cuando los
+                # valores cambian, pero no repetir exactamente Binance + Euro.
+                duplicada = conn.execute(
+                    "SELECT id FROM historico_tasas WHERE fecha = ? AND binance = ? AND euro_bcv = ? LIMIT 1",
+                    (fecha_tasa, binance, euro)
+                ).fetchone()
+                if duplicada:
+                    return jsonify({
+                        'error': 'Ya existe una tasa con la misma fecha, Binance P2P y Euro BCV. No se registró un duplicado.'
+                    }), 409
+
                 brecha = (binance / euro) - 1 if euro > 0 else 0
                 conn.execute('''INSERT INTO historico_tasas (fecha, hora, dolar_bcv, binance, bybit, dolar_promedio, euro_bcv, zelle, paypal, brecha, registrado_por) VALUES (?,?,?,?,?,?,?,?,?,?,?)''',
                               (fecha_tasa, d['hora'], safe_float(d.get('dolar_bcv')), binance, safe_float(d.get('bybit')), safe_float(d.get('dolar_promedio')), euro, safe_float(d.get('zelle')), safe_float(d.get('paypal')), brecha, usuario_actual))
@@ -873,7 +1000,10 @@ def api_crud(tabla, request, id=None):
                 conn.execute('''INSERT INTO historico_coberturas (fecha_registro, rango_evaluado, fecha_pico_maximo, porcentaje_cobertura, factor_proteccion, registrado_por, estado) VALUES (?,?,?,?,?,?,?)''',
                               (ahora, d.get('rango_evaluado',''), d.get('fecha_pico_maximo',''), safe_float(d.get('porcentaje_cobertura')), safe_float(d.get('factor_proteccion')), usuario_actual, d.get('estado', 'ACTIVO')))
             elif tabla_db == 'usuarios':
-                hashed = generate_password_hash(d['contrasena'])
+                contrasena_nueva = d.get('contrasena', '')
+                if len(contrasena_nueva) < 8:
+                    return jsonify({'error': 'La contraseña debe tener al menos 8 caracteres.'}), 400
+                hashed = generate_password_hash(contrasena_nueva)
                 conn.execute("INSERT INTO usuarios (nombre, usuario, contrasena, activo, es_admin, permisos, fecha_registro) VALUES (?, ?, ?, ?, ?, ?, ?)",
                              (d['nombre'], d['usuario'], hashed, d.get('activo', True), d.get('es_admin', False), json.dumps(d.get('permisos', [])), ahora))
             conn.commit()
@@ -915,6 +1045,9 @@ def api_crud(tabla, request, id=None):
                               safe_float(d.get('porcentaje_cobertura')),
                               safe_float(d.get('factor_proteccion')), d.get('estado', 'ACTIVO'), id))
             elif tabla_db == 'usuarios':
+                existente = conn.execute('SELECT protegido FROM usuarios WHERE id = ?', (id,)).fetchone()
+                if existente and existente['protegido']:
+                    return jsonify({'error': 'La cuenta protegida no se puede editar desde este módulo.'}), 403
                 if es_ultimo_administrador_activo(conn, id) and not (d.get('es_admin', False) and d.get('activo', True)):
                     return jsonify({'error': 'Debe permanecer al menos un administrador activo en el sistema.'}), 400
                 if d.get('contrasena'):
