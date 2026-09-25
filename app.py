@@ -144,12 +144,17 @@ def init_db():
         if conn.execute("SELECT COUNT(*) FROM historico_coberturas").fetchone()[0] == 0:
             conn.execute('''INSERT INTO historico_coberturas (fecha_registro, rango_evaluado, fecha_pico_maximo, porcentaje_cobertura, factor_proteccion, registrado_por, estado) VALUES (CURRENT_TIMESTAMP, 'Inicial', 'N/A', 0.20, 1.20, 'Sistema', 'ACTIVO')''')
         
-        # Insertar Usuario Fantasma (Admin) si no existe
-        admin = conn.execute("SELECT * FROM usuarios WHERE usuario = 'admin'").fetchone()
-        if not admin:
-            hashed = generate_password_hash('admin')
+        # Cuenta de emergencia: solo se crea en una base nueva cuando se define la contraseña
+        # en una variable de entorno de Render/servidor. Nunca se muestra en el módulo Usuarios.
+        admin_user = (os.environ.get('ZUARA_EMERGENCY_ADMIN_USER') or 'admin').strip() or 'admin'
+        admin_password = os.environ.get('ZUARA_EMERGENCY_ADMIN_PASSWORD')
+        admin = conn.execute("SELECT * FROM usuarios WHERE usuario = ?", (admin_user,)).fetchone()
+        if not admin and admin_password:
+            hashed = generate_password_hash(admin_password)
             conn.execute("INSERT INTO usuarios (nombre, usuario, contrasena, activo, es_admin, permisos, protegido, fecha_registro) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
-                         ('Administrador Principal', 'admin', hashed, True, True, '[]', True))
+                         ('Administrador Principal', admin_user, hashed, True, True, '[]', True))
+        elif not admin:
+            app.logger.warning("No existe cuenta de emergencia ZUARA y ZUARA_EMERGENCY_ADMIN_PASSWORD no está configurada.")
 
         conn.commit()
     finally:
@@ -233,15 +238,23 @@ def permisos_crud(tabla, metodo):
     if tabla == 'usuarios':
         return ('usuarios',) if es_administrador_actual() else ()
     if tabla == 'tasas':
-        return ('parametros',) if metodo != 'POST' else ('parametros', 'agregar_tasa')
+        return ('parametros', 'lista_precios', 'ventas', 'reportes') if metodo == 'GET' else (('parametros', 'agregar_tasa') if metodo == 'POST' else ('parametros',))
     if tabla == 'coberturas':
-        return ('parametros',)
+        return ('parametros', 'reportes') if metodo == 'GET' else ('parametros',)
     if tabla == 'ventas':
-        return ('historial_ventas', 'reportes') if metodo == 'GET' else ('historial_ventas',)
-    if tabla in {'clientes', 'proveedores', 'almacenes', 'categorias', 'productos'}:
-        return (tabla, 'reportes') if metodo == 'GET' else (tabla,)
+        return ('historial_ventas', 'reportes') if metodo == 'GET' else (('ventas',) if metodo == 'POST' else ('historial_ventas',))
+    if tabla == 'clientes':
+        return ('clientes', 'ventas', 'reportes') if metodo == 'GET' else ('clientes',)
+    if tabla == 'proveedores':
+        return ('proveedores', 'productos', 'reportes') if metodo == 'GET' else ('proveedores',)
+    if tabla == 'almacenes':
+        return ('almacenes', 'movimientos', 'existencias', 'reportes') if metodo == 'GET' else ('almacenes',)
+    if tabla == 'categorias':
+        return ('categorias', 'productos', 'reportes') if metodo == 'GET' else ('categorias',)
+    if tabla == 'productos':
+        return ('productos', 'ventas', 'existencias', 'movimientos', 'kardex', 'lista_precios', 'reportes') if metodo == 'GET' else ('productos',)
     if tabla == 'notas_credito':
-        return ('historial_ventas', 'reportes') if metodo == 'GET' else ('historial_ventas',)
+        return ('historial_ventas', 'ventas', 'reportes') if metodo == 'GET' else ('historial_ventas',)
     return ()
 
 def proteger_endpoint(*permisos):
@@ -388,7 +401,9 @@ def api_configuracion():
             return jsonify({'status': 'ok', 'configuracion': {'permitir_descuentos': fila['valor'] if fila else 'true'}})
         fila = conn.execute("SELECT valor FROM configuracion WHERE clave = 'permitir_descuentos'").fetchone()
         return jsonify({'permitir_descuentos': fila['valor'] if fila else 'true'})
-    except Exception as e: return jsonify({'error': str(e)}), 500
+    except Exception:
+        app.logger.exception('Error interno de API.')
+        return jsonify({'error': 'Error interno del servidor.'}), 500
     finally: conn.close()
 
 @app.route('/api/stock_almacenes/<int:producto_id>', methods=['GET'])
@@ -901,8 +916,9 @@ def obtener_brecha_maxima():
             return jsonify({'error': 'No hay tasas válidas con EURO BCV mayor a cero en el rango seleccionado.'}), 404
 
         return jsonify(dict(fila))
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        app.logger.exception('Error interno de API.')
+        return jsonify({'error': 'Error interno del servidor.'}), 500
     finally:
         conn.close()
 
@@ -1051,6 +1067,8 @@ def api_crud(tabla, request, id=None):
                 if es_ultimo_administrador_activo(conn, id) and not (d.get('es_admin', False) and d.get('activo', True)):
                     return jsonify({'error': 'Debe permanecer al menos un administrador activo en el sistema.'}), 400
                 if d.get('contrasena'):
+                    if len(d['contrasena']) < 8:
+                        return jsonify({'error': 'La contraseña debe tener al menos 8 caracteres.'}), 400
                     hashed = generate_password_hash(d['contrasena'])
                     conn.execute("UPDATE usuarios SET nombre=?, usuario=?, contrasena=?, activo=?, es_admin=?, permisos=? WHERE id=?",
                                  (d['nombre'], d['usuario'], hashed, d.get('activo', True), d.get('es_admin', False), json.dumps(d.get('permisos', [])), id))
