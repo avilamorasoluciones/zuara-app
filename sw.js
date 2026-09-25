@@ -1,10 +1,10 @@
-const CACHE_NAME = "zuara-app-v1";
+const CACHE_NAME = "zuara-app-v3-logo";
 const APP_SHELL = [
   "/",
   "/static/style.css",
   "/static/main.js",
-  "/static/manifest.webmanifest",
-  "/static/zuara-logo.svg"
+  "/static/manifest.webmanifest?v=20260925-3",
+  "/static/zuara-logo.svg?v=20260925-3"
 ];
 
 self.addEventListener("install", (event) => {
@@ -30,11 +30,8 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
 
   const url = new URL(request.url);
-
-  // API/session data must always use the network; never cache dynamic database responses.
   if (url.pathname.startsWith("/api/")) return;
 
-  // Navigation: network first, then the cached app shell.
   if (request.mode === "navigate") {
     event.respondWith(
       fetch(request)
@@ -48,7 +45,6 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Static assets: cache first, then network.
   event.respondWith(
     caches.match(request).then((cached) => cached || fetch(request).then((response) => {
       const copy = response.clone();
