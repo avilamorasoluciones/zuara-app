@@ -7,6 +7,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="icon" type="image/svg+xml" href="static/zuara-logo.svg?v=3">
     <link rel="stylesheet" href="static/style.css">
          
     <!-- Librerías para PDF y Excel -->
@@ -39,7 +40,7 @@
 <div class="d-flex" id="wrapper">
     <div class="sidebar theme-bg" id="sidebar-wrapper">
         <div class="sidebar-heading text-center py-4 fs-4 fw-bold animate-zoom-in text-white">
-            <div class="logo-container mx-auto mb-2 bg-white bounce-hover"><i class="fa-solid fa-cube fs-3 icono-giratorio text-theme-solid"></i></div>
+            <div class="logo-container mx-auto mb-2 bounce-hover"><img src="static/zuara-logo.svg?v=3" alt="ZUARA APP" class="zuara-logo-img"></div>
             <span id="brand-name">ZUARA APP</span>
         </div>
         <div class="list-group list-group-flush mt-2 ps-2 pb-4">
@@ -752,7 +753,7 @@
             <div class="modal-body p-4 bg-light">
                 <div class="input-group mb-4 shadow-sm rounded-4">
                     <span class="input-group-text bg-white border-0"><i class="fa-solid fa-search text-muted"></i></span>
-                    <input type="text" id="dev_buscar_factura" class="form-control border-0 py-2 fw-bold" placeholder="Buscar por Nº Factura (Ej: NEN0005_240826)" list="lista_facturas_dev">
+                    <input type="text" id="dev_buscar_factura" class="form-control border-0 py-2 fw-bold" placeholder="Buscar por Nº Factura" list="lista_facturas_dev">
                     <datalist id="lista_facturas_dev"></datalist>
                     <button class="btn btn-dark fw-bold px-4" onclick="buscarNotaParaDevolucion()">Buscar</button>
                 </div>
@@ -810,7 +811,7 @@
                         <div>
                             <h2 style="margin:0; font-weight:800; font-size:18px; text-transform:uppercase;" id="pdf_empresa">ZUARA APP</h2>
                             <p style="margin:20px 0 0 0; font-size:11px;">Nº DE ENTREGA/CONTROL</p>
-                            <p style="margin:2px 0 0 0; font-size:12px;">Ej: <span id="pdf_consecutivo" style="font-weight: bold;"></span></p>
+                            <p style="margin:2px 0 0 0; font-size:12px;"><span id="pdf_consecutivo" style="font-weight: bold;"></span></p>
                         </div>
                         <div style="text-align:left;">
                             <p style="margin:0 0 5px 0;">TASA BCV EURO (HOY): <span id="pdf_tasa_eur"></span></p>
@@ -897,7 +898,7 @@
                         <div>
                             <h2 style="margin:0; font-weight:800; font-size:18px; text-transform:uppercase;" id="nc_pdf_empresa">ZUARA APP</h2>
                             <p style="margin:20px 0 0 0; font-size:11px;">Nº DE CRÉDITO/CONTROL</p>
-                            <p style="margin:2px 0 0 0; font-size:12px;">EJ: <span id="nc_pdf_consecutivo" style="font-weight: bold;"></span></p>
+                            <p style="margin:2px 0 0 0; font-size:12px;"><span id="nc_pdf_consecutivo" style="font-weight: bold;"></span></p>
                             <!-- ESTE ES EL CAMBIO: Referencia cruzada visible a la factura -->
                             <p style="margin:2px 0 0 0; font-size:11px; color: #d9534f; font-weight: bold;">AFECTA A NOTA DE ENTREGA: <span id="nc_pdf_origen"></span></p>
                         </div>
