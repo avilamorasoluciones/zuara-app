@@ -2,9 +2,9 @@
 
 :root {
     --ios-bg: #f5f5f7; --ios-card: #ffffff;
-    --theme-color-1: #d4af37; --theme-color-2: #090909;
-    --theme-gradient: linear-gradient(135deg, #f6d365 0%, #d4af37 42%, #6f5310 72%, #050505 100%);
-    --theme-light: rgba(212, 175, 55, 0.14); --text-main: #1d1d1f;
+    --theme-color-1: #b08a3c; --theme-color-2: #070707;
+    --theme-gradient: linear-gradient(135deg, #d8b765 0%, #b08a3c 42%, #4f3a12 72%, #050505 100%);
+    --theme-light: rgba(176, 138, 60, 0.12); --text-main: #1d1d1f;
 }
 
 body {
@@ -108,12 +108,12 @@ body {
 
 /* Identidad fija ZUARA APP: dorado + negro en todo el sistema. */
 .btn-theme, .theme-bg { background: var(--theme-gradient) !important; }
-.text-theme-solid { color: #b8860b !important; }
-.bg-theme-light { background: rgba(212,175,55,0.12) !important; }
+.text-theme-solid { color: #8d6a29 !important; }
+.bg-theme-light { background: rgba(176,138,60,0.11) !important; }
 .sidebar-bubble { background: rgba(255,255,255,0.12); }
 .list-group-item.active .sidebar-bubble { color: #b8860b; }
 .title-bubble, .card-bubble { background: rgba(212,175,55,0.12); }
-.ios-input:focus, .ios-input-group:focus-within { border-color: #d4af37; box-shadow: 0 0 0 4px rgba(212,175,55,0.14); }
+.ios-input:focus, .ios-input-group:focus-within { border-color: #b08a3c; box-shadow: 0 0 0 4px rgba(176,138,60,0.12); }
 .btn-action.btn-edit { background: rgba(212,175,55,0.14); color: #9a7410; }
 .btn-action.btn-edit:hover { background: #d4af37; color: #111; }
 
@@ -182,4 +182,130 @@ body {
     .cell-kardex-producto { min-width: 300px; max-width: 340px !important; }
     .cell-producto-descripcion { min-width: 240px; max-width: 300px !important; }
     .corr-producto-box { border-radius: 14px; }
+}
+
+
+/* Buscador de productos de Nota de Entrega: dropdown independiente y legible. */
+.col-md-5.position-relative:has(#v_prod_resultados) {
+    z-index: 1100;
+}
+
+.producto-busqueda-lista {
+    background: #ffffff !important;
+    color: #1d1d1f !important;
+    border: 1px solid #e5e5ea !important;
+    border-radius: 14px !important;
+    overflow-x: hidden;
+    box-shadow: 0 14px 35px rgba(0,0,0,0.16) !important;
+}
+
+.producto-busqueda-lista .producto-busqueda-item {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 11px 14px !important;
+    border: 0 !important;
+    border-bottom: 1px solid #eeeeee !important;
+    border-radius: 0 !important;
+    background: #ffffff !important;
+    color: #1d1d1f !important;
+    text-align: left !important;
+    white-space: normal !important;
+    transition: background-color 0.15s ease, transform 0.15s ease;
+}
+
+.producto-busqueda-lista .producto-busqueda-item:last-child {
+    border-bottom: 0 !important;
+}
+
+.producto-busqueda-lista .producto-busqueda-item:hover,
+.producto-busqueda-lista .producto-busqueda-item:focus {
+    background: #f8f4e8 !important;
+    color: #1d1d1f !important;
+    padding-left: 17px !important;
+    outline: none;
+}
+
+.producto-busqueda-lista .producto-busqueda-item .text-theme-solid {
+    color: #9a7410 !important;
+    font-size: 0.88rem;
+    line-height: 1.2;
+}
+
+.producto-busqueda-lista .producto-busqueda-item .small.fw-bold {
+    color: #212529 !important;
+    line-height: 1.3;
+}
+
+.producto-busqueda-lista .producto-busqueda-item .small.text-muted {
+    color: #6c757d !important;
+    margin-top: 2px;
+}
+
+@media (max-width: 767.98px) {
+    .producto-busqueda-lista {
+        max-height: 240px !important;
+    }
+
+    .producto-busqueda-lista .producto-busqueda-item {
+        padding: 12px !important;
+    }
+}
+
+
+/* Reportes corporativos ZUARA: vista previa alineada con las exportaciones. */
+#tabla-reporte-dinamica {
+    background: #ffffff;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 10px;
+}
+#tabla-reporte-dinamica thead th {
+    background: #111111 !important;
+    color: #ffffff !important;
+    font-weight: 700 !important;
+    border: 0 !important;
+    padding: 10px 8px !important;
+    white-space: nowrap;
+}
+#tabla-reporte-dinamica tbody td {
+    border: 0 !important;
+    padding: 8px !important;
+    color: #222222;
+    background: #ffffff;
+    vertical-align: middle;
+}
+#tabla-reporte-dinamica tbody tr:nth-child(even) td {
+    background: #f3f3f3 !important;
+}
+#tabla-reporte-dinamica tbody tr:hover td {
+    background: #ececec !important;
+}
+#tabla-reporte-dinamica tbody td.text-end {
+    text-align: right !important;
+}
+#tabla-reporte-dinamica tbody td.text-center {
+    text-align: center !important;
+}
+
+
+/* Logo oficial ZUARA: Z trenzada + negro/dorado. */
+.logo-container {
+    width: 72px;
+    height: 72px;
+    background: transparent !important;
+    box-shadow: none !important;
+    overflow: visible;
+}
+.zuara-logo-img {
+    width: 72px;
+    height: 72px;
+    display: block;
+    object-fit: contain;
+    border-radius: 20px;
+    filter: drop-shadow(0 10px 22px rgba(0,0,0,.22));
+}
+@media (max-width: 767.98px) {
+    .logo-container, .zuara-logo-img { width: 64px; height: 64px; }
 }
