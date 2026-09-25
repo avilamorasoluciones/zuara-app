@@ -131,7 +131,9 @@ function normalizarPermisos(permisos) {
 
 function esAdministrador() { return Boolean(sesionActual && (sesionActual.es_admin || sesionActual.rol === 'ADMIN' || sesionActual.rol === 'ADMINISTRADOR')); }
 function tienePermiso(permiso) {
-    if (!sesionActual || esAdministrador()) return Boolean(sesionActual && esAdministrador());
+    if (!sesionActual) return false;
+    if (permiso === 'usuarios' && !esAdministrador()) return false;
+    if (esAdministrador()) return true;
     const permisos = normalizarPermisos(sesionActual.permisos);
     return Boolean(permisos[permiso] || (permiso === 'agregar_tasa' && permisos.parametros));
 }
