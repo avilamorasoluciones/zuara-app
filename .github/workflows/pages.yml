@@ -1,4 +1,4 @@
-name: Publicar ZUARA en GitHub Pages
+name: Publicar ZUARA en GitHub Pages # 20260925
 
 on:
   push:
