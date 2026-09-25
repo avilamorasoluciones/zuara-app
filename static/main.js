@@ -2532,7 +2532,19 @@ window.addEventListener('load', async () => {
         if (!esDispositivoMovil() || !esIOS() || esAppInstalada() || fuePospuestoRecientemente()) return;
         title().textContent = 'Instala ZUARA en tu iPhone';
         message().textContent = 'En Safari: Compartir → Añadir a pantalla de inicio.';
-        installButton().classList.add('d-none');
+        installButton().textContent = 'Ver cómo';
+        installButton().classList.remove('d-none');
+        banner()?.classList.remove('d-none');
+    }
+
+    function mostrarBannerManualMovil() {
+        if (!esDispositivoMovil() || esAppInstalada() || fuePospuestoRecientemente() || installEvent) return;
+        title().textContent = esIOS() ? 'Instala ZUARA en tu iPhone' : 'Instala ZUARA como app';
+        message().textContent = esIOS()
+            ? 'Toca Compartir → Añadir a pantalla de inicio.'
+            : 'En Chrome: ⋮ → Instalar aplicación o Añadir a pantalla de inicio.';
+        installButton().textContent = 'Ver cómo';
+        installButton().classList.remove('d-none');
         banner()?.classList.remove('d-none');
     }
 
@@ -2564,7 +2576,17 @@ window.addEventListener('load', async () => {
             posponerInvitacion();
             return;
         }
-        if (!install || !installEvent) return;
+        if (!install) return;
+
+        if (!installEvent) {
+            // Fallback para navegadores que no exponen beforeinstallprompt (incluido iOS):
+            // mostramos instrucciones sin bloquear al usuario.
+            message().textContent = esIOS()
+                ? 'Safari: toca Compartir → Añadir a pantalla de inicio.'
+                : 'Chrome/Android: abre ⋮ → Instalar aplicación o Añadir a pantalla de inicio.';
+            install.textContent = 'Entendido';
+            return;
+        }
 
         install.disabled = true;
         try {
@@ -2588,8 +2610,16 @@ window.addEventListener('load', async () => {
                 .catch((error) => console.warn('ZUARA PWA: no se pudo registrar el service worker.', error));
         }
 
-        if (!esAppInstalada() && esIOS()) {
+        if (esAppInstalada()) return;
+
+        // iOS no expone beforeinstallprompt: se deja una guía breve de instalación manual.
+        if (esIOS()) {
             window.setTimeout(mostrarBannerIOS, 1600);
+        } else if (esDispositivoMovil()) {
+            // En Android/otros móviles mostramos una invitación aun antes de que el
+            // navegador emita beforeinstallprompt; si luego llega, el botón se vuelve
+            // una instalación real de un toque.
+            window.setTimeout(mostrarBannerManualMovil, 2200);
         }
     });
 })();
