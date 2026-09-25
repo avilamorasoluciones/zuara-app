@@ -255,7 +255,7 @@ def permisos_crud(tabla, metodo):
 @app.before_request
 def sincronizar_sesion_desde_servidor():
     # El login/sesión/logout se encargan de su propio flujo.
-    if not request.path.startswith('/api/') or request.path.startswith('/api/auth/'):
+    if not request.path.startswith('/api/') or request.path in {'/api/auth/login', '/api/auth/logout'}:
         return None
     if not session.get('usuario_id'):
         return None
@@ -673,7 +673,11 @@ def api_ventas():
         
         data = conn.execute('SELECT * FROM ventas ORDER BY id DESC').fetchall()
         return jsonify([dict(ix) for ix in data])
-    except Exception as e: return jsonify({'error': str(e)}), 500
+    except Exception:
+
+        app.logger.exception('Error interno de API.')
+
+        return jsonify({'error': 'Error interno del servidor.'}), 500
     finally: conn.close()
 
 @app.route('/api/ventas/detalles/<consecutivo>', methods=['GET'])
@@ -686,7 +690,11 @@ def get_detalles_venta(consecutivo):
                     FROM detalle_nota_entrega d LEFT JOIN productos p ON d.producto_id = p.id WHERE d.consecutivo = ?'''
         data = conn.execute(query, (consecutivo,)).fetchall()
         return jsonify([dict(ix) for ix in data])
-    except Exception as e: return jsonify({'error': str(e)}), 500
+    except Exception:
+
+        app.logger.exception('Error interno de API.')
+
+        return jsonify({'error': 'Error interno del servidor.'}), 500
     finally: conn.close()
 
 @app.route('/api/clientes/notas_credito/<cliente_nombre>', methods=['GET'])
@@ -770,7 +778,11 @@ def registrar_devolucion():
         conn.execute("UPDATE ventas SET estado = 'DEVUELTO PARCIAL/TOTAL' WHERE consecutivo = ?", (consec_origen,))
         conn.commit()
         return jsonify({'status': 'ok', 'consecutivo': consec_nc})
-    except Exception as e: return jsonify({'error': str(e)}), 500
+    except Exception:
+
+        app.logger.exception('Error interno de API.')
+
+        return jsonify({'error': 'Error interno del servidor.'}), 500
     finally: conn.close()
 
 @app.route('/api/notas_credito/detalles/<consecutivo_nc>', methods=['GET'])
@@ -783,7 +795,11 @@ def get_detalles_nota_credito(consecutivo_nc):
                     FROM detalle_nota_credito d LEFT JOIN productos p ON d.producto_id = p.id WHERE d.consecutivo_nc = ?'''
         data = conn.execute(query, (consecutivo_nc,)).fetchall()
         return jsonify([dict(ix) for ix in data])
-    except Exception as e: return jsonify({'error': str(e)}), 500
+    except Exception:
+
+        app.logger.exception('Error interno de API.')
+
+        return jsonify({'error': 'Error interno del servidor.'}), 500
     finally: conn.close()
 
 @app.route('/api/lista_precios_data', methods=['GET'])
@@ -874,7 +890,11 @@ def upload_tasas():
             inserted += 1
         conn.commit()
         return jsonify({'status': 'ok', 'inserted': inserted})
-    except Exception as e: return jsonify({'error': str(e)}), 500
+    except Exception:
+
+        app.logger.exception('Error interno de API.')
+
+        return jsonify({'error': 'Error interno del servidor.'}), 500
     finally:
         try: conn.close()
         except: pass
@@ -1079,7 +1099,11 @@ def api_crud(tabla, request, id=None):
                 conn.execute(f'DELETE FROM {tabla_db} WHERE id=?', (id,))
             conn.commit()
             return jsonify({'status': 'ok'})
-    except Exception as e: return jsonify({'error': str(e)}), 500
+    except Exception:
+
+        app.logger.exception('Error interno de API.')
+
+        return jsonify({'error': 'Error interno del servidor.'}), 500
     finally: conn.close()
 
 if __name__ == '__main__':
