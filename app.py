@@ -226,11 +226,6 @@ def es_ultimo_administrador_activo(conn, usuario_id):
 def requiere_alguno_de_permisos(*permisos):
     return any(tiene_permiso_en_sesion(p) for p in permisos)
 
-def exigir_sesion():
-    if not session.get('usuario_id'):
-        return respuesta_sesion_no_valida()
-    return None
-
 def respuesta_sesion_no_valida():
     return jsonify({'error': 'Sesión no válida o expirada.'}), 401
 
@@ -256,9 +251,6 @@ def permisos_crud(tabla, metodo):
     if tabla == 'notas_credito':
         return ('historial_ventas', 'ventas', 'reportes') if metodo == 'GET' else ('historial_ventas',)
     return ()
-
-def proteger_endpoint(*permisos):
-    return requiere_alguno_de_permisos(*permisos)
 
 @app.before_request
 def sincronizar_sesion_desde_servidor():
@@ -440,7 +432,9 @@ def registrar_movimiento():
             
         conn.commit()
         return jsonify({'status': 'ok'})
-    except Exception as e: return jsonify({'error': str(e)}), 500
+    except Exception:
+        app.logger.exception('Error interno de API.')
+        return jsonify({'error': 'Error interno del servidor.'}), 500
     finally: conn.close()
 
 @app.route('/api/existencias/<int:producto_id>/corregir', methods=['POST'])
@@ -949,17 +943,8 @@ def api_crud(tabla, request, id=None):
         if tabla == 'usuarios' and not tiene_permiso_en_sesion('usuarios'):
             return respuesta_sin_permiso()
 
-        # Un usuario con el permiso especial puede registrar una tasa desde el
-        # dashboard, pero no consultar, editar ni borrar información sensible.
-        if tabla == 'tasas':
-            if request.method == 'POST' and not puede_agregar_tasa():
-                return respuesta_sin_permiso()
-            if request.method != 'POST' and not puede_gestionar_parametros():
-                return respuesta_sin_permiso()
-
-        # El historial de coberturas es parte del módulo crítico de parámetros.
-        if tabla == 'coberturas' and not puede_gestionar_parametros():
-            return respuesta_sin_permiso()
+        # Las comprobaciones de acceso ya se resolvieron mediante permisos_crud().
+        # Aquí solo se ejecuta la operación autorizada.
         
         if request.method == 'GET':
             query = f'SELECT * FROM {tabla_db} ORDER BY id DESC'
