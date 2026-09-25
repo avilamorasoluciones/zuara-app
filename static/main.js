@@ -2486,3 +2486,110 @@ window.addEventListener('load', async () => {
 
     window.addEventListener('load', () => setTimeout(refrescarCuandoAbreVentas, 0));
 })();
+
+
+/* ================= ZUARA PWA INSTALL ================= */
+(() => {
+    let installEvent = null;
+    const banner = () => document.getElementById('pwa-install-banner');
+    const installButton = () => document.getElementById('pwa-install-btn');
+    const title = () => document.getElementById('pwa-install-title');
+    const message = () => document.getElementById('pwa-install-message');
+    const dismiss = () => document.getElementById('pwa-install-dismiss');
+
+    function esAppInstalada() {
+        return window.matchMedia('(display-mode: standalone)').matches ||
+               window.matchMedia('(display-mode: fullscreen)').matches ||
+               window.matchMedia('(display-mode: minimal-ui)').matches ||
+               window.navigator.standalone === true;
+    }
+
+    function esDispositivoMovil() {
+        return window.matchMedia('(max-width: 767.98px)').matches ||
+               (navigator.maxTouchPoints > 0 && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent));
+    }
+
+    function esIOS() {
+        return /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+               (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    }
+
+    function fuePospuestoRecientemente() {
+        try {
+            const hasta = Number(localStorage.getItem('zuara_pwa_dismissed_until') || 0);
+            return Date.now() < hasta;
+        } catch (_) { return false; }
+    }
+
+    function posponerInvitacion() {
+        try {
+            localStorage.setItem('zuara_pwa_dismissed_until', String(Date.now() + 7 * 24 * 60 * 60 * 1000));
+        } catch (_) {}
+        banner()?.classList.add('d-none');
+    }
+
+    function mostrarBannerIOS() {
+        if (!esDispositivoMovil() || !esIOS() || esAppInstalada() || fuePospuestoRecientemente()) return;
+        title().textContent = 'Instala ZUARA en tu iPhone';
+        message().textContent = 'En Safari: Compartir → Añadir a pantalla de inicio.';
+        installButton().classList.add('d-none');
+        banner()?.classList.remove('d-none');
+    }
+
+    function mostrarBannerInstalacion() {
+        if (!esDispositivoMovil() || esAppInstalada() || fuePospuestoRecientemente() || !installEvent) return;
+        title().textContent = 'Instala ZUARA como app';
+        message().textContent = 'Acceso directo desde tu celular, como una aplicación.';
+        installButton().classList.remove('d-none');
+        banner()?.classList.remove('d-none');
+    }
+
+    window.addEventListener('beforeinstallprompt', (event) => {
+        // Chrome/Edge basado en Chromium: guardamos el evento y ofrecemos nuestro propio CTA.
+        event.preventDefault();
+        installEvent = event;
+        mostrarBannerInstalacion();
+    });
+
+    window.addEventListener('appinstalled', () => {
+        installEvent = null;
+        banner()?.classList.add('d-none');
+        try { localStorage.removeItem('zuara_pwa_dismissed_until'); } catch (_) {}
+    });
+
+    document.addEventListener('click', async (event) => {
+        const install = event.target.closest?.('#pwa-install-btn');
+        const close = event.target.closest?.('#pwa-install-dismiss');
+        if (close) {
+            posponerInvitacion();
+            return;
+        }
+        if (!install || !installEvent) return;
+
+        install.disabled = true;
+        try {
+            const result = await installEvent.prompt();
+            console.info('ZUARA install prompt:', result?.outcome || 'unknown');
+        } catch (error) {
+            console.warn('No se pudo abrir el instalador PWA.', error);
+        } finally {
+            installEvent = null;
+            install.disabled = false;
+            banner()?.classList.add('d-none');
+        }
+    });
+
+    window.addEventListener('load', () => {
+        // El service worker controla la app completa desde la raíz para que la PWA
+        // pueda abrirse como aplicación y conservar un shell offline básico.
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js', { scope: '/' })
+                .then(() => console.info('ZUARA PWA: service worker activo'))
+                .catch((error) => console.warn('ZUARA PWA: no se pudo registrar el service worker.', error));
+        }
+
+        if (!esAppInstalada() && esIOS()) {
+            window.setTimeout(mostrarBannerIOS, 1600);
+        }
+    });
+})();
