@@ -1,19 +1,21 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <!-- ZUARA-GHP-BUILD-20260925 -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#b08a3c">
     <title id="app-title">ZUARA APP</title>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="icon" type="image/svg+xml" href="static/zuara-logo.svg?v=20260925-3">
-    <link rel="stylesheet" href="static/style.css?v=20260925-2">
+    <link rel="manifest" href="static/manifest.webmanifest?v=20260925-3">
+    <link rel="stylesheet" href="static/style.css?v=20260925-3">
          
     <!-- Librerías para PDF y Excel -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
     <style>
@@ -41,7 +43,9 @@
 <div class="d-flex" id="wrapper">
     <div class="sidebar theme-bg" id="sidebar-wrapper">
         <div class="sidebar-heading text-center py-4 fs-4 fw-bold animate-zoom-in text-white">
-            <div class="logo-container mx-auto mb-2 bounce-hover" style="width:72px;height:72px;display:flex;align-items:center;justify-content:center;overflow:hidden;"><img src="static/zuara-logo.svg?v=20260925-3" alt="ZUARA APP" style="width:72px;height:72px;display:block;object-fit:contain;"></div>
+            <div class="logo-container mx-auto mb-2 bounce-hover" aria-label="ZUARA APP">
+                <img class="zuara-logo-img" src="static/zuara-logo.svg?v=20260925-3" alt="ZUARA APP">
+              </div>
             <span id="brand-name">ZUARA APP</span>
         </div>
         <div class="list-group list-group-flush mt-2 ps-2 pb-4">
@@ -200,8 +204,16 @@
                     <h6 class="fw-bolder text-uppercase mb-3 text-theme-solid"><i class="fa-solid fa-cart-arrow-down me-2"></i> Detalles de la Nota (Carrito)</h6>
                                          
                     <div class="bg-light p-3 rounded-4 mb-3 border">
-                        <div class="row g-2 align-items-center">
-                            <div class="col-md-5"><select id="v_prod_sel" class="form-select fw-bold border-0 shadow-sm py-2"><option value="">Seleccionar Producto...</option></select></div>
+                        <div class="row g-2 align-items-start">
+                            <div class="col-md-5 position-relative">
+                                <div class="input-group shadow-sm">
+                                    <span class="input-group-text bg-white border-0"><i class="fa-solid fa-search text-muted"></i></span>
+                                    <input type="text" id="v_prod_busqueda" class="form-control fw-bold border-0 py-2" placeholder="Buscar por código o descripción..." autocomplete="off">
+                                </div>
+                                <div id="v_prod_resultados" class="list-group producto-busqueda-lista position-absolute start-0 end-0 mt-1 shadow-lg rounded-3 d-none" style="z-index: 2000; max-height: 280px; overflow-y: auto;"></div>
+                                <select id="v_prod_sel" class="d-none"><option value="">Seleccionar Producto...</option></select>
+                                <small class="text-muted d-block mt-1 ms-1"><i class="fa-solid fa-circle-info me-1"></i>Escribe parte del código o del nombre para encontrar el producto.</small>
+                            </div>
                             <div class="col-md-2"><input type="number" id="v_prod_cant" class="form-control text-center border-0 shadow-sm py-2 fw-bold" min="1" value="1" placeholder="Cant."></div>
                             <div class="col-md-2" id="col-descuento-input"><input type="number" id="v_prod_desc" class="form-control text-center border-0 shadow-sm py-2 text-danger fw-bold" placeholder="% Desct." value="0"></div>
                             <div class="col-md-3"><button class="btn btn-theme w-100 rounded-3 fw-bold shadow-sm py-2" onclick="agregarAlCarrito()"><i class="fa-solid fa-plus"></i> Agregar</button></div>
@@ -364,7 +376,8 @@
                         <div class="col-md-3">
                             <label class="small fw-bold text-muted">Tipo de Reporte</label>
                             <select id="rep_tipo" class="form-select fw-bold border-0 shadow-sm" onchange="configurarFiltrosReporte()">
-                                <option value="ventas">Ventas Generales</option>
+                                <option value="ventas">Reporte total de ventas</option>
+                                <option value="ventas_detalladas">Reporte detallado de ventas</option>
                                 <option value="devoluciones_venta">Devoluciones por Venta</option>
                                 <option value="devoluciones_compra">Devoluciones de Compra</option>
                                 <option value="notas_credito">Notas de Crédito (Emitidas)</option>
@@ -392,15 +405,21 @@
                             </select>
                         </div>
                         <div class="col-md-3">
-                            <label class="small fw-bold text-muted">Desde Fecha</label>
+                            <label class="small fw-bold text-muted">Desde Fecha <span class="opacity-75">(opcional)</span></label>
                             <input type="date" id="rep_desde" class="form-control fw-bold border-0 shadow-sm">
                         </div>
                         <div class="col-md-3">
-                            <label class="small fw-bold text-muted">Hasta Fecha</label>
+                            <label class="small fw-bold text-muted">Hasta Fecha <span class="opacity-75">(opcional)</span></label>
                             <input type="date" id="rep_hasta" class="form-control fw-bold border-0 shadow-sm">
                         </div>
                         <div class="col-md-3">
                             <button class="btn btn-theme w-100 rounded-3 fw-bold shadow-sm py-2" onclick="generarVistaPreviaReporte()"><i class="fa-solid fa-table"></i> Cargar Datos</button>
+                        </div>
+                        <div class="col-12">
+                            <div class="small text-muted fw-bold mt-1">
+                                <i class="fa-solid fa-circle-info me-1 text-theme-solid"></i>
+                                Deja ambas fechas vacías para incluir todo el histórico. Si indicas una o las dos, se aplicarán como filtro.
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -970,9 +989,23 @@
     </div>
 </div>
 
+<div id="pwa-install-banner" class="pwa-install-banner d-none" role="dialog" aria-live="polite" aria-label="Instalar ZUARA como app">
+    <div class="pwa-install-copy">
+        <div class="pwa-install-icon"><img src="static/zuara-logo.svg?v=20260925-3" alt=""></div>
+        <div class="pwa-install-text">
+            <strong id="pwa-install-title">Instala ZUARA como app</strong>
+            <span id="pwa-install-message">Ten acceso directo a ZUARA desde tu celular.</span>
+        </div>
+    </div>
+    <div class="pwa-install-actions">
+        <button type="button" id="pwa-install-btn" class="btn btn-theme btn-sm rounded-pill fw-bold px-3">Instalar</button>
+        <button type="button" id="pwa-install-dismiss" class="pwa-install-close" aria-label="Cerrar invitación"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-        <script src="static/neon-config.js"></script>
-    <script src="static/neon-api.js"></script>
-<script src="static/main.js?v=20260925-1"></script>
+<script src="static/neon-config.js"></script>
+<script src="static/neon-api.js"></script>
+<script src="static/main.js?v=20260925-4"></script>
 </body>
 </html>
