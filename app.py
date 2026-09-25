@@ -355,6 +355,13 @@ def ping_keep_alive():
 def index(): 
     return render_template('index.html')
 
+@app.route('/sw.js')
+def service_worker():
+    response = send_from_directory(os.path.dirname(__file__), 'sw.js', mimetype='application/javascript')
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Service-Worker-Allowed'] = '/'
+    return response
+
 @app.route('/api/resumen', methods=['GET'])
 def api_resumen():
     if not session.get('usuario_id'):
