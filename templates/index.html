@@ -7,11 +7,13 @@
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" type="image/svg+xml" href="/static/zuara-logo.svg">
+    <link rel="stylesheet" href="/static/style.css?v=20260924-zuara-polish">
          
     <!-- Librerías para PDF y Excel -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
     <style>
@@ -39,7 +41,7 @@
 <div class="d-flex" id="wrapper">
     <div class="sidebar theme-bg" id="sidebar-wrapper">
         <div class="sidebar-heading text-center py-4 fs-4 fw-bold animate-zoom-in text-white">
-            <div class="logo-container mx-auto mb-2 bg-white bounce-hover"><i class="fa-solid fa-cube fs-3 icono-giratorio text-theme-solid"></i></div>
+            <div class="logo-container mx-auto mb-2 bounce-hover"><img src="/static/zuara-logo.svg" alt="ZUARA APP" class="zuara-logo-img"></div>
             <span id="brand-name">ZUARA APP</span>
         </div>
         <div class="list-group list-group-flush mt-2 ps-2 pb-4">
@@ -198,8 +200,16 @@
                     <h6 class="fw-bolder text-uppercase mb-3 text-theme-solid"><i class="fa-solid fa-cart-arrow-down me-2"></i> Detalles de la Nota (Carrito)</h6>
                                          
                     <div class="bg-light p-3 rounded-4 mb-3 border">
-                        <div class="row g-2 align-items-center">
-                            <div class="col-md-5"><select id="v_prod_sel" class="form-select fw-bold border-0 shadow-sm py-2"><option value="">Seleccionar Producto...</option></select></div>
+                        <div class="row g-2 align-items-start">
+                            <div class="col-md-5 position-relative">
+                                <div class="input-group shadow-sm">
+                                    <span class="input-group-text bg-white border-0"><i class="fa-solid fa-search text-muted"></i></span>
+                                    <input type="text" id="v_prod_busqueda" class="form-control fw-bold border-0 py-2" placeholder="Buscar por código o descripción..." autocomplete="off">
+                                </div>
+                                <div id="v_prod_resultados" class="list-group producto-busqueda-lista position-absolute start-0 end-0 mt-1 shadow-lg rounded-3 d-none" style="z-index: 2000; max-height: 280px; overflow-y: auto;"></div>
+                                <select id="v_prod_sel" class="d-none"><option value="">Seleccionar Producto...</option></select>
+                                <small class="text-muted d-block mt-1 ms-1"><i class="fa-solid fa-circle-info me-1"></i>Escribe parte del código o del nombre para encontrar el producto.</small>
+                            </div>
                             <div class="col-md-2"><input type="number" id="v_prod_cant" class="form-control text-center border-0 shadow-sm py-2 fw-bold" min="1" value="1" placeholder="Cant."></div>
                             <div class="col-md-2" id="col-descuento-input"><input type="number" id="v_prod_desc" class="form-control text-center border-0 shadow-sm py-2 text-danger fw-bold" placeholder="% Desct." value="0"></div>
                             <div class="col-md-3"><button class="btn btn-theme w-100 rounded-3 fw-bold shadow-sm py-2" onclick="agregarAlCarrito()"><i class="fa-solid fa-plus"></i> Agregar</button></div>
@@ -362,7 +372,8 @@
                         <div class="col-md-3">
                             <label class="small fw-bold text-muted">Tipo de Reporte</label>
                             <select id="rep_tipo" class="form-select fw-bold border-0 shadow-sm" onchange="configurarFiltrosReporte()">
-                                <option value="ventas">Ventas Generales</option>
+                                <option value="ventas">Reporte total de ventas</option>
+                                <option value="ventas_detalladas">Reporte detallado de ventas</option>
                                 <option value="devoluciones_venta">Devoluciones por Venta</option>
                                 <option value="devoluciones_compra">Devoluciones de Compra</option>
                                 <option value="notas_credito">Notas de Crédito (Emitidas)</option>
@@ -390,11 +401,11 @@
                             </select>
                         </div>
                         <div class="col-md-3">
-                            <label class="small fw-bold text-muted">Desde Fecha</label>
+                            <label class="small fw-bold text-muted">Desde Fecha <span class="opacity-75">(opcional)</span></label>
                             <input type="date" id="rep_desde" class="form-control fw-bold border-0 shadow-sm">
                         </div>
                         <div class="col-md-3">
-                            <label class="small fw-bold text-muted">Hasta Fecha</label>
+                            <label class="small fw-bold text-muted">Hasta Fecha <span class="opacity-75">(opcional)</span></label>
                             <input type="date" id="rep_hasta" class="form-control fw-bold border-0 shadow-sm">
                         </div>
                         <div class="col-md-3">
@@ -810,7 +821,7 @@
                         <div>
                             <h2 style="margin:0; font-weight:800; font-size:18px; text-transform:uppercase;" id="pdf_empresa">ZUARA APP</h2>
                             <p style="margin:20px 0 0 0; font-size:11px;">Nº DE ENTREGA/CONTROL</p>
-                            <p style="margin:2px 0 0 0; font-size:12px;">Ej: <span id="pdf_consecutivo" style="font-weight: bold;"></span></p>
+                            <p style="margin:2px 0 0 0; font-size:12px;"><span id="pdf_consecutivo" style="font-weight: bold;"></span></p>
                         </div>
                         <div style="text-align:left;">
                             <p style="margin:0 0 5px 0;">TASA BCV EURO (HOY): <span id="pdf_tasa_eur"></span></p>
@@ -897,7 +908,7 @@
                         <div>
                             <h2 style="margin:0; font-weight:800; font-size:18px; text-transform:uppercase;" id="nc_pdf_empresa">ZUARA APP</h2>
                             <p style="margin:20px 0 0 0; font-size:11px;">Nº DE CRÉDITO/CONTROL</p>
-                            <p style="margin:2px 0 0 0; font-size:12px;">EJ: <span id="nc_pdf_consecutivo" style="font-weight: bold;"></span></p>
+                            <p style="margin:2px 0 0 0; font-size:12px;"><span id="nc_pdf_consecutivo" style="font-weight: bold;"></span></p>
                             <!-- ESTE ES EL CAMBIO: Referencia cruzada visible a la factura -->
                             <p style="margin:2px 0 0 0; font-size:11px; color: #d9534f; font-weight: bold;">AFECTA A NOTA DE ENTREGA: <span id="nc_pdf_origen"></span></p>
                         </div>
@@ -969,6 +980,6 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script src="/static/main.js?v=20260921-fecha-facturacion-2"></script>
+<script src="/static/main.js?v=20260922-reportes-ventas-1"></script>
 </body>
 </html>
