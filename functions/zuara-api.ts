@@ -228,7 +228,7 @@ export default {
 
       if (req.method === "GET" && path === "/api/configuracion") {
         if (!permiso(user,"configuracion")) return json({error:"No es posible realizar esta operación."},403);
-        const rows=(await pool.query("SELECT clave,valor FROM configuracion ORDER BY id")).rows;
+        const rows=(await pool.query("SELECT clave,valor FROM configuracion ORDER BY clave")).rows;
         return json(Object.fromEntries(rows.map((x:any)=>[x.clave,x.valor])));
       }
 
