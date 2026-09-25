@@ -1,0 +1,23 @@
+{
+  "name": "ZUARA APP",
+  "short_name": "ZUARA",
+  "description": "Gestión, inventario, notas de entrega, reportes y precios de ZUARA APP.",
+  "lang": "es",
+  "dir": "ltr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "orientation": "portrait-primary",
+  "background_color": "#050505",
+  "theme_color": "#b08a3c",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "/static/zuara-logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
